@@ -1,0 +1,752 @@
+<!DOCTYPE html>
+<html lang="en" class="light">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Qualtrim — Stock Analysis</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg:     #f5f6f8;
+    --bg2:    #ffffff;
+    --bg3:    #f0f1f4;
+    --card:   #ffffff;
+    --border: #e2e4e9;
+    --bdim:   #eceef2;
+    --text:   #111318;
+    --muted:  #6b7280;
+    --muted2: #9ca3af;
+    --green:  #16a34a;
+    --red:    #dc2626;
+    --blue:   #2563eb;
+    --gold:   #d97706;
+    --purple: #7c3aed;
+  }
+  :root.dark {
+    --bg:     #0e0f11;
+    --bg2:    #141518;
+    --bg3:    #1a1c20;
+    --card:   #16181c;
+    --border: #272a30;
+    --bdim:   #1f2227;
+    --text:   #e4e6ea;
+    --muted:  #6b7280;
+    --muted2: #4b5563;
+    --green:  #22c55e;
+    --red:    #ef4444;
+    --blue:   #3b82f6;
+    --gold:   #f59e0b;
+    --purple: #8b5cf6;
+  }
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+    background: var(--bg); color: var(--text);
+    font-size: 14px; line-height: 1.5;
+    display: flex; min-height: 100vh;
+    transition: background .2s, color .2s;
+  }
+  /* SIDEBAR */
+  .sidebar {
+    width: 200px; min-width: 200px; background: var(--bg2);
+    border-right: 1px solid var(--border);
+    display: flex; flex-direction: column;
+    position: fixed; top: 0; bottom: 0; left: 0;
+    z-index: 200; overflow-y: auto;
+    transition: background .2s, border-color .2s;
+  }
+  .sidebar-logo {
+    padding: 18px 16px 14px; font-size: 17px; font-weight: 700;
+    color: var(--text); letter-spacing: -0.3px;
+    border-bottom: 1px solid var(--border);
+    display: flex; align-items: center; gap: 8px;
+  }
+  .logo-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--blue); box-shadow: 0 0 8px rgba(59,130,246,0.5); }
+  .sidebar-section { padding: 12px 0 4px; }
+  .sidebar-sec-label {
+    font-size: 10px; font-weight: 600; color: var(--muted2);
+    letter-spacing: 0.8px; text-transform: uppercase; padding: 0 14px 6px;
+  }
+  .nav-link {
+    display: flex; align-items: center; gap: 9px;
+    padding: 7px 14px; font-size: 13px; font-weight: 400;
+    color: var(--muted); cursor: pointer;
+    transition: color .12s, background .12s; user-select: none;
+  }
+  .nav-link:hover { color: var(--text); background: rgba(128,128,128,0.06); }
+  .nav-link.active { color: var(--text); background: rgba(37,99,235,0.08); font-weight: 500; }
+  .nav-link.active .n-icon { color: var(--blue); }
+  .n-icon { width: 16px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; font-size: 12px; color: var(--muted2); }
+  .nav-link.active::after { content:''; display:block; width:5px; height:5px; border-radius:50%; background:var(--blue); margin-left:auto; }
+  /* MAIN */
+  .main { margin-left: 200px; flex: 1; display: flex; flex-direction: column; min-height: 100vh; }
+  /* TOPBAR */
+  .topbar {
+    height: 52px; background: var(--bg2); border-bottom: 1px solid var(--border);
+    display: flex; align-items: center; padding: 0 20px; gap: 14px;
+    position: sticky; top: 0; z-index: 100;
+    transition: background .2s, border-color .2s;
+  }
+  .search-wrap { position: relative; display: flex; gap: 6px; }
+  .search-ico { position: absolute; left: 10px; top: 50%; transform: translateY(-50%); color: var(--muted); pointer-events: none; display: flex; }
+  .search-input {
+    width: 180px; background: var(--bg3); border: 1px solid var(--border);
+    border-radius: 6px; padding: 6px 10px 6px 32px;
+    font-size: 13px; font-family: 'Inter', sans-serif;
+    color: var(--text); outline: none; transition: border-color .15s;
+    text-transform: uppercase;
+  }
+  .search-input::placeholder { color: var(--muted); text-transform: none; }
+  .search-input:focus { border-color: var(--blue); }
+  .search-btn {
+    padding: 6px 14px; border-radius: 6px; font-size: 13px; font-weight: 500;
+    font-family: 'Inter', sans-serif; cursor: pointer;
+    background: var(--blue); color: #fff; border: none;
+    transition: opacity .12s;
+  }
+  .search-btn:hover { opacity: 0.88; }
+  .tb-sym { font-size: 15px; font-weight: 700; color: var(--text); }
+  .tb-name { font-size: 13px; color: var(--muted); }
+  .tb-price { font-size: 15px; font-weight: 600; color: var(--text); }
+  .tb-chg { font-size: 13px; font-weight: 500; }
+  .tb-right { margin-left: auto; display: flex; gap: 8px; align-items: center; }
+  .btn-sm {
+    padding: 5px 12px; border-radius: 5px; font-size: 12px; font-weight: 500;
+    font-family: 'Inter', sans-serif; cursor: pointer; border: 1px solid var(--border);
+    background: var(--bg3); color: var(--muted); transition: all .12s;
+  }
+  .btn-sm:hover { background: var(--border); color: var(--text); }
+  /* THEME TOGGLE */
+  .theme-toggle {
+    display: flex; align-items: center; gap: 7px;
+    padding: 5px 10px; border-radius: 20px;
+    background: var(--bg3); border: 1px solid var(--border);
+    cursor: pointer; user-select: none;
+    font-size: 12px; color: var(--muted); font-family: 'Inter', sans-serif; font-weight: 500;
+    transition: border-color .15s;
+  }
+  .theme-toggle:hover { border-color: var(--blue); color: var(--text); }
+  .toggle-track {
+    width: 30px; height: 17px; border-radius: 9px;
+    background: var(--border); position: relative; transition: background .2s; flex-shrink: 0;
+  }
+  .dark .toggle-track { background: var(--blue); }
+  .toggle-thumb {
+    width: 13px; height: 13px; border-radius: 50%; background: #fff;
+    position: absolute; top: 2px; left: 2px;
+    transition: transform .2s; box-shadow: 0 1px 3px rgba(0,0,0,0.25);
+  }
+  .dark .toggle-thumb { transform: translateX(13px); }
+  /* CONTENT */
+  .content { flex: 1; padding: 20px; overflow-x: hidden; }
+  /* LOADING */
+  .loading-overlay {
+    position: fixed; inset: 0; background: var(--bg);
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    z-index: 500; gap: 14px; transition: opacity .3s;
+  }
+  .loading-overlay.hidden { opacity: 0; pointer-events: none; }
+  .spinner {
+    width: 36px; height: 36px; border-radius: 50%;
+    border: 3px solid var(--border); border-top-color: var(--blue);
+    animation: spin .7s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .loading-text { font-size: 13px; color: var(--muted); }
+  /* ERROR */
+  .error-banner {
+    background: rgba(220,38,38,0.08); border: 1px solid rgba(220,38,38,0.25);
+    border-radius: 7px; padding: 10px 14px; font-size: 13px; color: var(--red);
+    margin-bottom: 16px; display: none;
+  }
+  /* STOCK META */
+  .stock-meta { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 18px; }
+  .stock-tag { background: var(--bg3); border: 1px solid var(--border); border-radius: 4px; padding: 3px 9px; font-size: 12px; color: var(--muted); }
+  /* TABS */
+  .tab-bar { display: flex; border-bottom: 1px solid var(--border); margin-bottom: 20px; overflow-x: auto; }
+  .tab-bar::-webkit-scrollbar { display: none; }
+  .tab {
+    padding: 9px 16px; font-size: 13px; font-weight: 400; color: var(--muted);
+    cursor: pointer; border-bottom: 2px solid transparent; margin-bottom: -1px;
+    white-space: nowrap; transition: color .12s; user-select: none;
+  }
+  .tab:hover { color: var(--text); }
+  .tab.active { color: var(--text); font-weight: 500; border-bottom-color: var(--blue); }
+  /* SUMMARY BAR */
+  .summary-bar {
+    display: grid; grid-template-columns: repeat(auto-fill, minmax(135px, 1fr));
+    gap: 1px; background: var(--border);
+    border: 1px solid var(--border); border-radius: 8px; overflow: hidden; margin-bottom: 20px;
+  }
+  .stat-cell { background: var(--card); padding: 11px 14px; transition: background .2s; }
+  .stat-label { font-size: 11px; color: var(--muted); margin-bottom: 4px; white-space: nowrap; }
+  .stat-value { font-size: 15px; font-weight: 600; color: var(--text); white-space: nowrap; }
+  .stat-sub { font-size: 11px; color: var(--muted); margin-top: 2px; }
+  /* CARD */
+  .card { background: var(--card); border: 1px solid var(--border); border-radius: 8px; padding: 16px 20px; transition: background .2s, border-color .2s; }
+  .card-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px; flex-wrap: wrap; gap: 8px; }
+  .card-title { font-size: 13px; font-weight: 600; color: var(--text); }
+  .card-sub { font-size: 12px; color: var(--muted); margin-left: 6px; font-weight: 400; }
+  /* CONTROLS */
+  .ctrl-group { display: flex; gap: 2px; }
+  .ctrl-btn {
+    padding: 3px 9px; font-size: 11px; font-weight: 500;
+    border-radius: 4px; border: 1px solid transparent;
+    background: transparent; color: var(--muted); cursor: pointer;
+    font-family: 'Inter', sans-serif; transition: all .1s;
+  }
+  .ctrl-btn:hover { color: var(--text); background: var(--bg3); }
+  .ctrl-btn.active { color: var(--text); background: var(--bg3); border-color: var(--border); }
+  /* LEGEND */
+  .legend { display: flex; gap: 14px; flex-wrap: wrap; }
+  .leg { display: flex; align-items: center; gap: 6px; font-size: 11px; color: var(--muted); }
+  .leg-dot { width: 10px; height: 10px; border-radius: 2px; flex-shrink: 0; }
+  /* LAYOUT */
+  .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  /* DCF */
+  .dcf-inputs { display: flex; flex-direction: column; gap: 11px; }
+  .dcf-row { display: flex; align-items: center; justify-content: space-between; }
+  .dcf-lbl { font-size: 12px; color: var(--muted); }
+  .dcf-field { display: flex; align-items: center; gap: 5px; }
+  .dcf-num {
+    width: 76px; background: var(--bg3); border: 1px solid var(--border);
+    border-radius: 5px; padding: 4px 8px; font-size: 13px;
+    font-family: 'Inter', sans-serif; color: var(--text);
+    outline: none; text-align: right; transition: border-color .12s;
+  }
+  .dcf-num:focus { border-color: var(--blue); }
+  .dcf-unit { font-size: 12px; color: var(--muted); }
+  .dcf-result {
+    background: var(--bg3); border: 1px solid var(--border);
+    border-radius: 8px; padding: 20px;
+    display: flex; flex-direction: column; justify-content: center; align-items: center; gap: 5px;
+  }
+  .dcf-res-label { font-size: 11px; color: var(--muted); letter-spacing: 0.3px; text-transform: uppercase; }
+  .dcf-res-num { font-size: 38px; font-weight: 700; color: var(--text); letter-spacing: -1.5px; }
+  .dcf-res-dir { font-size: 14px; font-weight: 600; }
+  .dcf-res-cur { font-size: 12px; color: var(--muted); margin-top: 2px; }
+  /* TABLES */
+  .data-table { width: 100%; border-collapse: collapse; }
+  .data-table th { font-size: 11px; font-weight: 500; color: var(--muted); text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--border); white-space: nowrap; }
+  .data-table th.r { text-align: right; }
+  .data-table td { padding: 8px 8px; border-bottom: 1px solid var(--bdim); vertical-align: middle; }
+  .data-table tr:last-child td { border-bottom: none; }
+  .data-table tbody tr { cursor: pointer; transition: background .1s; }
+  .data-table tbody tr:hover td { background: rgba(128,128,128,0.04); }
+  .t-sym { font-weight: 600; color: var(--text); font-size: 13px; }
+  .t-name { font-size: 11px; color: var(--muted); display: block; }
+  .t-num { font-size: 13px; font-weight: 500; text-align: right; white-space: nowrap; color: var(--text); }
+  .t-dim { color: var(--muted) !important; }
+  /* AI */
+  .ai-pill {
+    display: inline-flex; align-items: center; gap: 5px;
+    font-size: 11px; color: var(--purple);
+    background: rgba(124,58,237,0.08); border: 1px solid rgba(124,58,237,0.18);
+    border-radius: 4px; padding: 2px 8px; font-weight: 500;
+  }
+  .ai-body { font-size: 13px; color: var(--muted); line-height: 1.8; margin-top: 12px; }
+  .ai-body strong { color: var(--text); font-weight: 500; }
+  /* UTILS */
+  .mb16 { margin-bottom: 16px; }
+  .mt16 { margin-top: 16px; }
+  .green { color: var(--green) !important; }
+  .red   { color: var(--red) !important; }
+  .blue  { color: var(--blue) !important; }
+  /* SKELETON */
+  .skel { background: linear-gradient(90deg, var(--border) 25%, var(--bdim) 50%, var(--border) 75%); background-size: 200% 100%; animation: shimmer 1.4s infinite; border-radius: 4px; display: inline-block; }
+  @keyframes shimmer { 0%{background-position:200% 0} 100%{background-position:-200% 0} }
+  /* RESPONSIVE */
+  @media (max-width: 860px) { .two-col { grid-template-columns: 1fr; } .summary-bar { grid-template-columns: repeat(3, 1fr); } }
+  @media (max-width: 640px) { .sidebar { display: none; } .main { margin-left: 0; } }
+  ::-webkit-scrollbar { width: 4px; height: 4px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+</style>
+</head>
+<body>
+
+<!-- LOADING OVERLAY -->
+<div class="loading-overlay" id="loadingOverlay">
+  <div class="spinner"></div>
+  <div class="loading-text" id="loadingText">Loading AAPL data…</div>
+</div>
+
+<!-- SIDEBAR -->
+<aside class="sidebar">
+  <div class="sidebar-logo"><div class="logo-dot"></div>Qualtrim</div>
+  <div class="sidebar-section">
+    <div class="sidebar-sec-label">Analysis</div>
+    <div class="nav-link active" onclick="setNav(this)"><span class="n-icon">▦</span>Overview</div>
+    <div class="nav-link" onclick="setNav(this)"><span class="n-icon">📈</span>Revenue</div>
+    <div class="nav-link" onclick="setNav(this)"><span class="n-icon">💵</span>Free Cash Flow</div>
+    <div class="nav-link" onclick="setNav(this)"><span class="n-icon">💹</span>EPS</div>
+    <div class="nav-link" onclick="setNav(this)"><span class="n-icon">⚖️</span>Balance Sheet</div>
+    <div class="nav-link" onclick="setNav(this)"><span class="n-icon">📉</span>Ratios</div>
+    <div class="nav-link" onclick="setNav(this)"><span class="n-icon">🏷️</span>KPIs</div>
+    <div class="nav-link" onclick="setNav(this)"><span class="n-icon">🌍</span>Segments</div>
+  </div>
+  <div class="sidebar-section">
+    <div class="sidebar-sec-label">Tools</div>
+    <div class="nav-link" onclick="setNav(this)"><span class="n-icon">🧮</span>DCF Calculator</div>
+    <div class="nav-link" onclick="setNav(this)"><span class="n-icon">📅</span>Earnings Cal.</div>
+    <div class="nav-link" onclick="setNav(this)"><span class="n-icon">🔍</span>Screener</div>
+  </div>
+  <div class="sidebar-section">
+    <div class="sidebar-sec-label">Portfolio</div>
+    <div class="nav-link" onclick="setNav(this)"><span class="n-icon">💼</span>Holdings</div>
+    <div class="nav-link" onclick="setNav(this)"><span class="n-icon">⭐</span>Watchlist</div>
+    <div class="nav-link" onclick="setNav(this)"><span class="n-icon">🌱</span>Dividends</div>
+  </div>
+</aside>
+
+<!-- MAIN -->
+<div class="main">
+  <header class="topbar">
+    <div class="search-wrap">
+      <span class="search-ico">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+      </span>
+      <input class="search-input" id="tickerInput" type="text" placeholder="Ticker…" value="AAPL" onkeydown="if(event.key==='Enter')loadTicker()">
+      <button class="search-btn" onclick="loadTicker()">Search</button>
+    </div>
+    <span class="tb-sym" id="tbSym">AAPL</span>
+    <span class="tb-name" id="tbName">Apple Inc.</span>
+    <span class="tb-price" id="tbPrice">—</span>
+    <span class="tb-chg" id="tbChg">—</span>
+    <div class="tb-right">
+      <button class="btn-sm">+ Watchlist</button>
+      <div class="theme-toggle" onclick="toggleTheme()">
+        <span id="themeLabel">Dark</span>
+        <div class="toggle-track"><div class="toggle-thumb"></div></div>
+      </div>
+    </div>
+  </header>
+
+  <main class="content">
+    <div class="error-banner" id="errorBanner"></div>
+
+    <div class="stock-meta" id="stockMeta">
+      <span class="stock-tag" id="metaExchange">—</span>
+      <span class="stock-tag" id="metaSector">—</span>
+      <span class="stock-tag" id="metaIndustry">—</span>
+      <span class="stock-tag" id="metaCap">—</span>
+    </div>
+
+    <div class="tab-bar">
+      <div class="tab active" onclick="setTab(this)">Overview</div>
+      <div class="tab" onclick="setTab(this)">Revenue</div>
+      <div class="tab" onclick="setTab(this)">Cash Flow</div>
+      <div class="tab" onclick="setTab(this)">Earnings</div>
+      <div class="tab" onclick="setTab(this)">Balance Sheet</div>
+      <div class="tab" onclick="setTab(this)">Ratios</div>
+      <div class="tab" onclick="setTab(this)">Dividends</div>
+      <div class="tab" onclick="setTab(this)">KPIs</div>
+    </div>
+
+    <!-- STATS -->
+    <div class="summary-bar">
+      <div class="stat-cell"><div class="stat-label">Market Cap</div><div class="stat-value" id="sMktCap">—</div></div>
+      <div class="stat-cell"><div class="stat-label">P/E (TTM)</div><div class="stat-value" id="sPE">—</div></div>
+      <div class="stat-cell"><div class="stat-label">Revenue TTM</div><div class="stat-value" id="sRev">—</div><div class="stat-sub" id="sRevYoy"></div></div>
+      <div class="stat-cell"><div class="stat-label">Free Cash Flow</div><div class="stat-value" id="sFCF">—</div><div class="stat-sub" id="sFCFYoy"></div></div>
+      <div class="stat-cell"><div class="stat-label">Net Margin</div><div class="stat-value" id="sMargin">—</div></div>
+      <div class="stat-cell"><div class="stat-label">EPS (TTM)</div><div class="stat-value" id="sEPS">—</div><div class="stat-sub" id="sEPSYoy"></div></div>
+      <div class="stat-cell"><div class="stat-label">Div. Yield</div><div class="stat-value" id="sDivYield">—</div><div class="stat-sub" id="sDivAmt"></div></div>
+      <div class="stat-cell"><div class="stat-label">SBC / FCF</div><div class="stat-value" id="sSBC">—</div></div>
+      <div class="stat-cell"><div class="stat-label">ROE</div><div class="stat-value" id="sROE">—</div></div>
+      <div class="stat-cell"><div class="stat-label">Debt / Equity</div><div class="stat-value" id="sDE">—</div></div>
+    </div>
+
+    <!-- REVENUE -->
+    <div class="card mb16">
+      <div class="card-header">
+        <div><span class="card-title">Revenue &amp; Net Income</span><span class="card-sub">Annual</span></div>
+        <div style="display:flex;align-items:center;gap:16px">
+          <div class="legend">
+            <div class="leg"><div class="leg-dot" style="background:#3b82f6"></div>Revenue</div>
+            <div class="leg"><div class="leg-dot" style="background:#22c55e"></div>Net Income</div>
+          </div>
+        </div>
+      </div>
+      <canvas id="revenueChart" height="90"></canvas>
+    </div>
+
+    <!-- FCF + EPS -->
+    <div class="two-col mb16">
+      <div class="card">
+        <div class="card-header">
+          <div><span class="card-title">Free Cash Flow vs. SBC</span><span class="card-sub">Annual</span></div>
+          <div class="legend">
+            <div class="leg"><div class="leg-dot" style="background:#3b82f6"></div>FCF</div>
+            <div class="leg"><div class="leg-dot" style="background:#ef4444"></div>SBC</div>
+          </div>
+        </div>
+        <canvas id="fcfChart" height="130"></canvas>
+      </div>
+      <div class="card">
+        <div class="card-header">
+          <div><span class="card-title">Earnings Per Share</span><span class="card-sub">Diluted · Annual</span></div>
+          <div class="legend">
+            <div class="leg"><div class="leg-dot" style="background:#f59e0b;border-radius:50%"></div>EPS</div>
+          </div>
+        </div>
+        <canvas id="epsChart" height="130"></canvas>
+      </div>
+    </div>
+
+    <!-- DCF -->
+    <div class="card mb16">
+      <div class="card-header">
+        <div><span class="card-title">DCF Calculator</span><span class="card-sub" id="dcfTicker">AAPL</span></div>
+      </div>
+      <div class="two-col">
+        <div class="dcf-inputs">
+          <div class="dcf-row"><span class="dcf-lbl">FCF Growth Rate (Yr 1–5)</span><div class="dcf-field"><input class="dcf-num" id="dcfG1" type="number" value="10"><span class="dcf-unit">%</span></div></div>
+          <div class="dcf-row"><span class="dcf-lbl">FCF Growth Rate (Yr 6–10)</span><div class="dcf-field"><input class="dcf-num" id="dcfG2" type="number" value="7"><span class="dcf-unit">%</span></div></div>
+          <div class="dcf-row"><span class="dcf-lbl">Terminal Growth Rate</span><div class="dcf-field"><input class="dcf-num" id="dcfGt" type="number" value="3"><span class="dcf-unit">%</span></div></div>
+          <div class="dcf-row"><span class="dcf-lbl">Discount Rate (WACC)</span><div class="dcf-field"><input class="dcf-num" id="dcfR" type="number" value="9"><span class="dcf-unit">%</span></div></div>
+          <div class="dcf-row"><span class="dcf-lbl">Free Cash Flow TTM</span><div class="dcf-field"><input class="dcf-num" id="dcfFcf" type="number" value="0"><span class="dcf-unit">$B</span></div></div>
+          <div class="dcf-row"><span class="dcf-lbl">Shares Outstanding</span><div class="dcf-field"><input class="dcf-num" id="dcfSh" type="number" value="0"><span class="dcf-unit">B</span></div></div>
+        </div>
+        <div class="dcf-result">
+          <div class="dcf-res-label">Intrinsic Value</div>
+          <div class="dcf-res-num" id="dcfOut">—</div>
+          <div class="dcf-res-dir" id="dcfDir"></div>
+          <div class="dcf-res-cur" id="dcfCurPrice">vs. current price —</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- WATCHLIST + EARNINGS -->
+    <div class="two-col mb16">
+      <div class="card">
+        <div class="card-header">
+          <span class="card-title">Watchlist</span>
+          <span style="font-size:12px;color:var(--blue);cursor:pointer;font-weight:500">+ Add</span>
+        </div>
+        <table class="data-table">
+          <thead><tr>
+            <th>Symbol</th><th class="r">Price</th><th class="r">1D</th><th class="r">P/E</th><th class="r">Mkt Cap</th>
+          </tr></thead>
+          <tbody id="wlBody"></tbody>
+        </table>
+      </div>
+      <div class="card">
+        <div class="card-header">
+          <span class="card-title">Earnings Calendar</span>
+          <div class="ctrl-group">
+            <button class="ctrl-btn active" onclick="ctrlClick(this)">Upcoming</button>
+            <button class="ctrl-btn" onclick="ctrlClick(this)">Past</button>
+          </div>
+        </div>
+        <table class="data-table">
+          <thead><tr>
+            <th>Date</th><th>Company</th><th class="r">EPS Est.</th><th class="r">Rev. Est.</th>
+          </tr></thead>
+          <tbody id="erBody"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- AI SUMMARY -->
+    <div class="card">
+      <div class="card-header">
+        <span class="card-title">Company Profile</span>
+      </div>
+      <div class="ai-body" id="aiBody">Loading…</div>
+    </div>
+  </main>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
+<script>
+const API_KEY = '6QK7dBKdkAJNCvTOm4n1Bgv4LCmlLCAI';
+const BASE = 'https://financialmodelingprep.com';
+
+// Chart instances
+let revChart, fcfChart, epsChartInst;
+let currentPrice = 0;
+let isDark = false;
+
+// ── HELPERS ──
+function fmt(n, decimals=1) {
+  if (n == null || isNaN(n)) return '—';
+  const abs = Math.abs(n);
+  if (abs >= 1e12) return (n/1e12).toFixed(decimals) + 'T';
+  if (abs >= 1e9)  return (n/1e9).toFixed(decimals) + 'B';
+  if (abs >= 1e6)  return (n/1e6).toFixed(decimals) + 'M';
+  if (abs >= 1e3)  return (n/1e3).toFixed(decimals) + 'K';
+  return n.toFixed(decimals);
+}
+function pct(n, decimals=1) { return n == null || isNaN(n) ? '—' : (n*100).toFixed(decimals)+'%'; }
+function fmtPct(n, decimals=1) { return n == null || isNaN(n) ? '—' : n.toFixed(decimals)+'%'; }
+function yoy(curr, prev) {
+  if (!curr || !prev) return null;
+  return ((curr - prev) / Math.abs(prev)) * 100;
+}
+function yoyEl(el, val) {
+  if (val == null) { el.textContent = ''; return; }
+  el.textContent = (val >= 0 ? '+' : '') + val.toFixed(1) + '% YoY';
+  el.className = 'stat-sub ' + (val >= 0 ? 'green' : 'red');
+}
+function gridColor() { return isDark ? '#1f2227' : '#e2e4e9'; }
+function tipTheme() {
+  return isDark
+    ? { backgroundColor:'#16181c', borderColor:'#272a30', titleColor:'#e4e6ea', bodyColor:'#9ca3af' }
+    : { backgroundColor:'#ffffff', borderColor:'#e2e4e9', titleColor:'#111318', bodyColor:'#6b7280' };
+}
+
+async function apiFetch(url) {
+  console.log('Fetching:', url);
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  const json = await res.json();
+  console.log('Response preview:', JSON.stringify(json).slice(0, 200));
+  return json;
+}
+
+// ── MAIN LOAD ──
+async function loadTicker() {
+  const ticker = document.getElementById('tickerInput').value.trim().toUpperCase();
+  if (!ticker) return;
+
+  showLoading(`Loading ${ticker} data…`);
+  hideError();
+
+  try {
+    // Parallel fetch — only free endpoints
+    const [profile, metrics, quote, earnings] = await Promise.all([
+      apiFetch(`${BASE}/stable/profile?symbol=${ticker}&apikey=${API_KEY}`),
+      apiFetch(`${BASE}/stable/key-metrics-ttm?symbol=${ticker}&apikey=${API_KEY}`),
+      apiFetch(`${BASE}/stable/quote?symbol=${ticker}&apikey=${API_KEY}`),
+      apiFetch(`${BASE}/stable/earnings-calendar?from=${todayPlus(0)}&to=${todayPlus(60)}&apikey=${API_KEY}`),
+    ]);
+
+    if (!profile || profile.length === 0) throw new Error(`Ticker "${ticker}" not found`);
+
+    const p = profile[0];
+    const q = quote[0] || {};
+    const m = metrics[0] || {};
+
+    // Topbar
+    document.getElementById('tbSym').textContent = ticker;
+    document.getElementById('tbName').textContent = p.companyName || ticker;
+    currentPrice = q.price || p.price || 0;
+    document.getElementById('tbPrice').textContent = currentPrice ? '$' + currentPrice.toFixed(2) : '—';
+    const chgPct = q.changePercentage ?? q.changesPercentage ?? null;
+    const chgEl = document.getElementById('tbChg');
+    chgEl.textContent = chgPct != null ? (chgPct >= 0 ? '+' : '') + chgPct.toFixed(2) + '%' : '—';
+    chgEl.className = 'tb-chg ' + (chgPct >= 0 ? 'green' : 'red');
+
+    // Meta tags
+    document.getElementById('metaExchange').textContent = p.exchangeShortName || p.exchange || '—';
+    document.getElementById('metaSector').textContent = p.sector || '—';
+    document.getElementById('metaIndustry').textContent = p.industry || '—';
+    document.getElementById('metaCap').textContent = p.mktCap ? fmt(p.mktCap) + ' Cap' : '—';
+
+    // Stats — derive from metrics TTM + profile + quote
+    const mktCap = q.marketCap || p.mktCap || null;
+    document.getElementById('sMktCap').textContent = mktCap ? '$' + fmt(mktCap) : '—';
+
+    const pe = m.peRatioTTM ?? m.peRatio ?? q.pe ?? null;
+    document.getElementById('sPE').textContent = pe ? pe.toFixed(1) + '×' : '—';
+
+    // Back-calculate revenue TTM from EV/Sales: revenue = EV / evToSalesTTM
+    const ev = m.enterpriseValueTTM ?? null;
+    const evToSales = m.evToSalesTTM ?? null;
+    const revTTM = (ev && evToSales && evToSales !== 0) ? ev / evToSales : null;
+    document.getElementById('sRev').textContent = revTTM ? '$' + fmt(revTTM) : '—';
+    document.getElementById('sRevYoy').textContent = '';
+
+    // Back-calculate FCF TTM from EV/FCF: fcf = EV / evToFreeCashFlowTTM
+    const evToFcf = m.evToFreeCashFlowTTM ?? null;
+    const fcfTTM = (ev && evToFcf && evToFcf !== 0) ? ev / evToFcf : null;
+    document.getElementById('sFCF').textContent = fcfTTM ? '$' + fmt(fcfTTM) : '—';
+    document.getElementById('sFCFYoy').textContent = '';
+
+    const margin = m.netProfitMarginTTM ?? m.netProfitMargin ?? null;
+    document.getElementById('sMargin').textContent = margin != null ? fmtPct(margin * 100) : '—';
+
+    const eps = m.epsTTM ?? m.eps ?? q.eps ?? null;
+    document.getElementById('sEPS').textContent = eps != null ? '$' + eps.toFixed(2) : '—';
+    document.getElementById('sEPSYoy').textContent = '';
+
+    document.getElementById('sDivYield').textContent = p.lastDividend ? '$' + parseFloat(p.lastDividend).toFixed(2) + '/sh' : (p.lastDiv ? '$' + p.lastDiv.toFixed(2) + '/sh' : '—');
+    document.getElementById('sDivAmt').textContent = (p.lastDividend || p.lastDiv) && currentPrice
+      ? fmtPct(((p.lastDividend || p.lastDiv) / currentPrice) * 100) + ' yield' : '—';
+
+    // SBC/FCF from metrics
+    const sbcToFcf = m.stockBasedCompensationToRevenueTTM ?? null;
+    document.getElementById('sSBC').textContent = sbcToFcf != null ? fmtPct(sbcToFcf * 100) : '—';
+
+    const roe = m.roeTTM ?? m.roe ?? null;
+    document.getElementById('sROE').textContent = roe != null ? fmtPct(roe * 100) : '—';
+
+    const de = m.debtToEquityTTM ?? m.debtToEquity ?? null;
+    document.getElementById('sDE').textContent = de != null ? de.toFixed(2) + '×' : '—';
+
+    // DCF inputs — derive shares from mktCap / price, FCF from EV/FCF
+    const sharesB = (mktCap && currentPrice) ? mktCap / currentPrice / 1e9 : 0;
+    document.getElementById('dcfFcf').value = fcfTTM ? (fcfTTM / 1e9).toFixed(1) : 0;
+    document.getElementById('dcfSh').value  = sharesB.toFixed(2);
+    document.getElementById('dcfTicker').textContent = ticker;
+    calcDCF();
+
+    // Charts — use placeholder message since financials are paywalled
+    buildChartsUnavailable();
+
+    // EARNINGS CALENDAR
+    buildEarnings(earnings, ticker);
+
+    // PROFILE
+    document.getElementById('aiBody').innerHTML = p.description
+      ? p.description
+      : '<em>No company description available.</em>';
+
+  } catch(e) {
+    showError(e.message || 'Failed to load data. Check your API key or ticker symbol.');
+  } finally {
+    hideLoading();
+  }
+}
+
+// ── CHARTS — financial statements paywalled on free tier ──
+function buildChartsUnavailable() {
+  ['revenueChart','fcfChart','epsChart'].forEach(id => {
+    const canvas = document.getElementById(id);
+    const parent = canvas.parentElement;
+    // Replace canvas with notice if not already done
+    if (!parent.querySelector('.chart-notice')) {
+      canvas.style.display = 'none';
+      const notice = document.createElement('div');
+      notice.className = 'chart-notice';
+      notice.style.cssText = 'display:flex;align-items:center;justify-content:center;height:120px;color:var(--muted);font-size:12px;gap:8px;border:1px dashed var(--border);border-radius:6px;margin-top:4px';
+      notice.innerHTML = `<span style="font-size:16px">🔒</span> Historical financials require an FMP paid plan ($14/mo)`;
+      parent.appendChild(notice);
+    }
+  });
+  // Destroy old chart instances if any
+  if (revChart)    { revChart.destroy(); revChart = null; }
+  if (fcfChart)    { fcfChart.destroy(); fcfChart = null; }
+  if (epsChartInst){ epsChartInst.destroy(); epsChartInst = null; }
+}
+
+// ── WATCHLIST ──
+const WL_TICKERS = ['AAPL','MSFT','NVDA','AMZN','GOOGL','META','TSLA'];
+async function loadWatchlist() {
+  const body = document.getElementById('wlBody');
+  body.innerHTML = '<tr><td colspan="5" style="color:var(--muted);font-size:12px;padding:12px 8px">Loading…</td></tr>';
+  try {
+    const tickers = [...WL_TICKERS].slice(0, 8);
+    // Free tier only supports single-symbol quote — fetch sequentially to avoid rate limit
+    const results = await Promise.all(
+      tickers.map(t => apiFetch(`${BASE}/stable/quote?symbol=${t}&apikey=${API_KEY}`).catch(() => null))
+    );
+    body.innerHTML = '';
+    results.forEach(res => {
+      if (!res || !res[0]) return;
+      const s = res[0];
+      const chg = s.changePercentage ?? s.changesPercentage ?? 0;
+      const up = chg >= 0;
+      const tr = document.createElement('tr');
+      tr.innerHTML = `
+        <td><span class="t-sym">${s.symbol}</span><span class="t-name">${(s.name||'').slice(0,22)}</span></td>
+        <td class="t-num">$${(s.price||0).toFixed(2)}</td>
+        <td class="t-num ${up?'green':'red'}">${(chg>=0?'+':'')}${chg.toFixed(2)}%</td>
+        <td class="t-num t-dim">—</td>
+        <td class="t-num t-dim">$${fmt(s.marketCap)}</td>
+      `;
+      body.appendChild(tr);
+    });
+    if (!body.children.length) body.innerHTML = '<tr><td colspan="5" style="color:var(--muted);font-size:12px;padding:8px">No data</td></tr>';
+  } catch(e) {
+    body.innerHTML = '<tr><td colspan="5" style="color:var(--red);font-size:12px;padding:8px">Failed to load watchlist</td></tr>';
+  }
+}
+
+// ── EARNINGS CALENDAR ──
+function buildEarnings(data, currentTicker) {
+  const body = document.getElementById('erBody');
+  body.innerHTML = '';
+  if (!data || data.length === 0) {
+    body.innerHTML = '<tr><td colspan="4" style="color:var(--muted);font-size:12px;padding:12px 8px">No upcoming earnings found</td></tr>';
+    return;
+  }
+  const rows = data.slice(0,8);
+  rows.forEach(e => {
+    const tr = document.createElement('tr');
+    const epsEst = e.epsEstimated != null ? '$'+e.epsEstimated.toFixed(2) : '—';
+    const revEst = e.revenueEstimated != null ? '$'+fmt(e.revenueEstimated) : '—';
+    tr.innerHTML = `
+      <td style="font-size:12px;color:var(--muted);white-space:nowrap">${e.date}</td>
+      <td><span class="t-sym" style="${e.symbol===currentTicker?'color:var(--blue)':''}">${e.symbol}</span></td>
+      <td class="t-num">${epsEst}</td>
+      <td class="t-num t-dim">${revEst}</td>
+    `;
+    body.appendChild(tr);
+  });
+}
+
+// ── DCF ──
+function calcDCF() {
+  const fcf = parseFloat(document.getElementById('dcfFcf').value)*1e9;
+  const g1  = parseFloat(document.getElementById('dcfG1').value)/100;
+  const g2  = parseFloat(document.getElementById('dcfG2').value)/100;
+  const gt  = parseFloat(document.getElementById('dcfGt').value)/100;
+  const r   = parseFloat(document.getElementById('dcfR').value)/100;
+  const sh  = parseFloat(document.getElementById('dcfSh').value)*1e9;
+  if (!fcf || !sh || r <= gt) { document.getElementById('dcfOut').textContent = '—'; return; }
+  let pv=0, cf=fcf;
+  for(let i=1;i<=5;i++){cf*=(1+g1);pv+=cf/Math.pow(1+r,i);}
+  for(let i=6;i<=10;i++){cf*=(1+g2);pv+=cf/Math.pow(1+r,i);}
+  pv+=(cf*(1+gt)/(r-gt))/Math.pow(1+r,10);
+  const iv=pv/sh, diff=((iv-currentPrice)/currentPrice*100).toFixed(1), up=iv>currentPrice;
+  document.getElementById('dcfOut').textContent=`$${iv.toFixed(2)}`;
+  const d=document.getElementById('dcfDir');
+  d.textContent=currentPrice ? (up?`▲ ${diff}% upside`:`▼ ${Math.abs(diff)}% downside`) : '';
+  d.style.color=up?'var(--green)':'var(--red)';
+  document.getElementById('dcfCurPrice').textContent = currentPrice ? `vs. current price $${currentPrice.toFixed(2)}` : '';
+}
+['dcfG1','dcfG2','dcfGt','dcfR','dcfFcf','dcfSh'].forEach(id=>document.getElementById(id).addEventListener('input',calcDCF));
+
+// ── DATE HELPERS ──
+function todayPlus(days) {
+  const d = new Date(); d.setDate(d.getDate() + days);
+  return d.toISOString().slice(0,10);
+}
+
+// ── UI HELPERS ──
+function showLoading(msg) {
+  document.getElementById('loadingText').textContent = msg || 'Loading…';
+  document.getElementById('loadingOverlay').classList.remove('hidden');
+}
+function hideLoading() { document.getElementById('loadingOverlay').classList.add('hidden'); }
+function showError(msg) { const b=document.getElementById('errorBanner'); b.textContent=msg; b.style.display='block'; }
+function hideError() { document.getElementById('errorBanner').style.display='none'; }
+
+function setNav(el){ document.querySelectorAll('.nav-link').forEach(n=>n.classList.remove('active')); el.classList.add('active'); }
+function setTab(el){ document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active')); el.classList.add('active'); }
+function ctrlClick(btn){ btn.closest('.ctrl-group').querySelectorAll('.ctrl-btn').forEach(b=>b.classList.remove('active')); btn.classList.add('active'); }
+
+// ── THEME ──
+function toggleTheme(){
+  isDark = !isDark;
+  const root = document.documentElement;
+  isDark ? root.classList.add('dark') : root.classList.remove('dark');
+  document.getElementById('themeLabel').textContent = isDark ? 'Light' : 'Dark';
+  // update chart colors
+  [revChart, fcfChart, epsChartInst].forEach(chart => {
+    if (!chart) return;
+    const gc = gridColor(); const tt = tipTheme();
+    Object.values(chart.options.scales||{}).forEach(s => { if(s.grid) s.grid.color=gc; });
+    if(chart.options.plugins?.tooltip) Object.assign(chart.options.plugins.tooltip, tt);
+    chart.update('none');
+  });
+}
+
+// ── INIT ──
+loadTicker();
+loadWatchlist();
+</script>
+</body>
+</html>
