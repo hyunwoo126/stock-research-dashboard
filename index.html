@@ -294,7 +294,7 @@
   <div class="sidebar-section">
     <div class="sidebar-sec-label">Portfolio</div>
     <div class="nav-link" onclick="setNav(this)"><span class="n-icon">💼</span>Holdings</div>
-    <div class="nav-link" onclick="setNav(this)"><span class="n-icon">⭐</span>Watchlist</div>
+
     <div class="nav-link" onclick="setNav(this)"><span class="n-icon">🌱</span>Dividends</div>
   </div>
 </aside>
@@ -306,7 +306,7 @@
       <span class="search-ico">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
       </span>
-      <input class="search-input" id="tickerInput" type="text" placeholder="Ticker…" value="AAPL" onkeydown="if(event.key==='Enter')loadTicker()">
+      <input class="search-input" id="tickerInput" type="text" placeholder="Ticker…" value="MSFT" onkeydown="if(event.key==='Enter')loadTicker()">
       <button class="search-btn" onclick="loadTicker()">Search</button>
     </div>
     <span class="tb-sym" id="tbSym">AAPL</span>
@@ -314,7 +314,7 @@
     <span class="tb-price" id="tbPrice">—</span>
     <span class="tb-chg" id="tbChg">—</span>
     <div class="tb-right">
-      <button class="btn-sm">+ Watchlist</button>
+
       <div class="theme-toggle" onclick="toggleTheme()">
         <span id="themeLabel">Dark</span>
         <div class="toggle-track"><div class="toggle-thumb"></div></div>
@@ -417,35 +417,21 @@
       </div>
     </div>
 
-    <!-- WATCHLIST + EARNINGS -->
-    <div class="two-col mb16">
-      <div class="card">
-        <div class="card-header">
-          <span class="card-title">Watchlist</span>
-          <span style="font-size:12px;color:var(--blue);cursor:pointer;font-weight:500">+ Add</span>
+    <!-- EARNINGS -->
+    <div class="card mb16">
+      <div class="card-header">
+        <span class="card-title">Earnings Calendar</span>
+        <div class="ctrl-group">
+          <button class="ctrl-btn active" onclick="ctrlClick(this)">Upcoming</button>
+          <button class="ctrl-btn" onclick="ctrlClick(this)">Past</button>
         </div>
-        <table class="data-table">
-          <thead><tr>
-            <th>Symbol</th><th class="r">Price</th><th class="r">1D</th><th class="r">P/E</th><th class="r">Mkt Cap</th>
-          </tr></thead>
-          <tbody id="wlBody"></tbody>
-        </table>
       </div>
-      <div class="card">
-        <div class="card-header">
-          <span class="card-title">Earnings Calendar</span>
-          <div class="ctrl-group">
-            <button class="ctrl-btn active" onclick="ctrlClick(this)">Upcoming</button>
-            <button class="ctrl-btn" onclick="ctrlClick(this)">Past</button>
-          </div>
-        </div>
-        <table class="data-table">
-          <thead><tr>
-            <th>Date</th><th>Company</th><th class="r">EPS Est.</th><th class="r">Rev. Est.</th>
-          </tr></thead>
-          <tbody id="erBody"></tbody>
-        </table>
-      </div>
+      <table class="data-table">
+        <thead><tr>
+          <th>Date</th><th>Company</th><th class="r">EPS Est.</th><th class="r">Rev. Est.</th>
+        </tr></thead>
+        <tbody id="erBody"></tbody>
+      </table>
     </div>
 
     <!-- AI SUMMARY -->
@@ -632,38 +618,6 @@ function buildChartsUnavailable() {
 }
 
 // ── WATCHLIST ──
-const WL_TICKERS = ['AAPL','MSFT','NVDA','AMZN','GOOGL','META','TSLA'];
-async function loadWatchlist() {
-  const body = document.getElementById('wlBody');
-  body.innerHTML = '<tr><td colspan="5" style="color:var(--muted);font-size:12px;padding:12px 8px">Loading…</td></tr>';
-  try {
-    const tickers = [...WL_TICKERS].slice(0, 8);
-    // Free tier only supports single-symbol quote — fetch sequentially to avoid rate limit
-    const results = await Promise.all(
-      tickers.map(t => apiFetch(`${BASE}/stable/quote?symbol=${t}&apikey=${API_KEY}`).catch(() => null))
-    );
-    body.innerHTML = '';
-    results.forEach(res => {
-      if (!res || !res[0]) return;
-      const s = res[0];
-      const chg = s.changePercentage ?? s.changesPercentage ?? 0;
-      const up = chg >= 0;
-      const tr = document.createElement('tr');
-      tr.innerHTML = `
-        <td><span class="t-sym">${s.symbol}</span><span class="t-name">${(s.name||'').slice(0,22)}</span></td>
-        <td class="t-num">$${(s.price||0).toFixed(2)}</td>
-        <td class="t-num ${up?'green':'red'}">${(chg>=0?'+':'')}${chg.toFixed(2)}%</td>
-        <td class="t-num t-dim">—</td>
-        <td class="t-num t-dim">$${fmt(s.marketCap)}</td>
-      `;
-      body.appendChild(tr);
-    });
-    if (!body.children.length) body.innerHTML = '<tr><td colspan="5" style="color:var(--muted);font-size:12px;padding:8px">No data</td></tr>';
-  } catch(e) {
-    body.innerHTML = '<tr><td colspan="5" style="color:var(--red);font-size:12px;padding:8px">Failed to load watchlist</td></tr>';
-  }
-}
-
 // ── EARNINGS CALENDAR ──
 function buildEarnings(data, currentTicker) {
   const body = document.getElementById('erBody');
@@ -746,7 +700,6 @@ function toggleTheme(){
 
 // ── INIT ──
 loadTicker();
-loadWatchlist();
 </script>
 </body>
 </html>
