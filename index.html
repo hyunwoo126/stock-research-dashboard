@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Qualtrim — Stock Analysis</title>
+<title>Stock Analysis</title>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
 <style>
   :root {
@@ -103,7 +103,8 @@
   /* CHARTS AREA */
   .charts-area { padding: 20px 24px; background: var(--bg); }
   .charts-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; margin-bottom: 14px; }
-  .chart-card { background: var(--card); border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
+  .chart-card { background: var(--card); border: 1px solid var(--border); border-radius: 8px; overflow: hidden; cursor: pointer; transition: border-color .15s, box-shadow .15s; }
+  .chart-card:hover { border-color: var(--blue); box-shadow: 0 2px 8px rgba(9,105,218,0.08); }
   .chart-card-header { display: flex; align-items: center; justify-content: space-between; padding: 14px 16px 10px; }
   .chart-card-title { font-size: 13px; font-weight: 500; color: var(--text); display: flex; align-items: center; gap: 8px; }
   .trend-badge { display: inline-flex; align-items: center; padding: 2px 7px; border-radius: 10px; font-size: 11px; font-weight: 600; }
@@ -115,6 +116,16 @@
   .chart-locked { display: flex; flex-direction: column; align-items: center; justify-content: center; height: 155px; gap: 8px; color: var(--muted); font-size: 12px; }
   .chart-locked-icon { font-size: 18px; opacity: 0.5; }
   .chart-locked-text { text-align: center; line-height: 1.6; }
+  /* CHART MODAL */
+  .chart-modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.45); z-index: 900; display: flex; align-items: center; justify-content: center; opacity: 0; pointer-events: none; transition: opacity .2s; }
+  .chart-modal-overlay.open { opacity: 1; pointer-events: all; }
+  .chart-modal { background: var(--card); border-radius: 12px; box-shadow: 0 24px 60px rgba(0,0,0,0.18); width: min(860px, 94vw); padding: 24px; position: relative; transform: scale(0.96); transition: transform .2s; }
+  .chart-modal-overlay.open .chart-modal { transform: scale(1); }
+  .chart-modal-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 20px; }
+  .chart-modal-title { font-size: 16px; font-weight: 600; color: var(--text); }
+  .chart-modal-close { width: 30px; height: 30px; border-radius: 6px; border: 1px solid var(--border); background: transparent; cursor: pointer; font-size: 16px; color: var(--muted); display: flex; align-items: center; justify-content: center; transition: background .12s; }
+  .chart-modal-close:hover { background: var(--bg3); color: var(--text); }
+  .chart-modal-body { height: 380px; }
   /* DCF */
   .full-card { background: var(--card); border: 1px solid var(--border); border-radius: 8px; overflow: hidden; margin-bottom: 14px; }
   .full-card-header { display: flex; align-items: center; justify-content: space-between; padding: 14px 20px; border-bottom: 1px solid var(--border); }
@@ -212,8 +223,17 @@
       <div class="idx-item"><span class="idx-name">S&amp;P 500</span><span class="idx-chg idx-up" id="idxSP">—</span></div>
       <div class="idx-item"><span class="idx-name">Nasdaq</span><span class="idx-chg idx-up" id="idxNas">—</span></div>
     </div>
-    <div class="topbar-actions">
-      <button class="topbar-icon-btn" title="Settings">⚙</button>
+    <div class="topbar-actions" style="display:flex;align-items:center;gap:10px">
+      <div style="position:relative">
+        <select id="apiSelector" onchange="onApiChange()" style="appearance:none;-webkit-appearance:none;background:var(--bg3);border:1px solid var(--border);border-radius:6px;padding:5px 30px 5px 10px;font-size:12px;font-weight:500;font-family:'Inter',sans-serif;color:var(--text);cursor:pointer;outline:none;transition:border-color .15s;" title="Select data provider">
+          <option value="fmp">FMP</option>
+          <option value="finnhub">Finnhub</option>
+        </select>
+        <span style="position:absolute;right:8px;top:50%;transform:translateY(-50%);pointer-events:none;font-size:10px;color:var(--muted)">▾</span>
+      </div>
+      <div id="apiStatusDot" title="API source" style="display:flex;align-items:center;gap:5px;font-size:11px;color:var(--muted);white-space:nowrap">
+        <span id="apiStatusLabel">Financial Modeling Prep</span>
+      </div>
     </div>
   </header>
 
@@ -290,48 +310,48 @@
     <!-- CHARTS -->
     <div class="charts-area">
       <div class="charts-grid">
-        <div class="chart-card">
+        <div class="chart-card" data-title="Price" onclick="openChartModal('Price','priceChart')">
           <div class="chart-card-header">
             <div class="chart-card-title">Price <span class="trend-badge up" id="priceTrendBadge">—</span></div>
-            <button class="chart-expand-btn">⤢</button>
+            <button class="chart-expand-btn" onclick="event.stopPropagation();openChartModal('Price','priceChart')">⤢</button>
           </div>
           <div class="chart-body"><canvas id="priceChart" height="160"></canvas></div>
         </div>
-        <div class="chart-card">
+        <div class="chart-card" data-title="Revenue" onclick="openChartModal('Revenue','revenueChart')">
           <div class="chart-card-header">
             <div class="chart-card-title">Revenue</div>
-            <button class="chart-expand-btn">⤢</button>
+            <button class="chart-expand-btn" onclick="event.stopPropagation();openChartModal('Revenue','revenueChart')">⤢</button>
           </div>
           <div class="chart-body" id="revenueChartWrap"><canvas id="revenueChart" style="display:none" height="160"></canvas></div>
         </div>
-        <div class="chart-card">
+        <div class="chart-card" data-title="Free Cash Flow" onclick="openChartModal('Free Cash Flow','fcfChart')">
           <div class="chart-card-header">
             <div class="chart-card-title">Free Cash Flow</div>
-            <button class="chart-expand-btn">⤢</button>
+            <button class="chart-expand-btn" onclick="event.stopPropagation();openChartModal('Free Cash Flow','fcfChart')">⤢</button>
           </div>
           <div class="chart-body" id="fcfChartWrap"><canvas id="fcfChart" style="display:none" height="160"></canvas></div>
         </div>
-        <div class="chart-card">
+        <div class="chart-card" data-title="Net Income" onclick="openChartModal('Net Income','netIncomeChart')">
           <div class="chart-card-header">
             <div class="chart-card-title">Net Income</div>
-            <button class="chart-expand-btn">⤢</button>
+            <button class="chart-expand-btn" onclick="event.stopPropagation();openChartModal('Net Income','netIncomeChart')">⤢</button>
           </div>
           <div class="chart-body" id="netIncomeChartWrap"><canvas id="netIncomeChart" style="display:none" height="160"></canvas></div>
         </div>
       </div>
 
       <div class="charts-grid">
-        <div class="chart-card">
+        <div class="chart-card" data-title="EPS" onclick="openChartModal('EPS','epsChart')">
           <div class="chart-card-header">
             <div class="chart-card-title">EPS</div>
-            <button class="chart-expand-btn">⤢</button>
+            <button class="chart-expand-btn" onclick="event.stopPropagation();openChartModal('EPS','epsChart')">⤢</button>
           </div>
           <div class="chart-body" id="epsChartWrap"><canvas id="epsChart" style="display:none" height="160"></canvas></div>
         </div>
-        <div class="chart-card">
+        <div class="chart-card" data-title="EBITDA" onclick="openChartModal('EBITDA','ebitdaChart')">
           <div class="chart-card-header">
             <div class="chart-card-title">EBITDA</div>
-            <button class="chart-expand-btn">⤢</button>
+            <button class="chart-expand-btn" onclick="event.stopPropagation();openChartModal('EBITDA','ebitdaChart')">⤢</button>
           </div>
           <div class="chart-body" id="ebitdaChartWrap"><canvas id="ebitdaChart" style="display:none" height="160"></canvas></div>
         </div>
@@ -384,11 +404,28 @@
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
 <script>
-const API_KEY = '6QK7dBKdkAJNCvTOm4n1Bgv4LCmlLCAI';
-const BASE = 'https://financialmodelingprep.com';
+// ── API CONFIGS ──
+const APIS = {
+  fmp: {
+    key: '6QK7dBKdkAJNCvTOm4n1Bgv4LCmlLCAI',
+    base: 'https://financialmodelingprep.com',
+    label: 'Financial Modeling Prep'
+  },
+  finnhub: {
+    key: 'd6mc8ihr01qi0ajln2tgd6mc8ihr01qi0ajln2u0',
+    base: 'https://finnhub.io/api/v1',
+    label: 'Finnhub'
+  }
+};
+let activeApi = 'fmp';
+
 let priceChartInst;
 let currentPrice = 0;
+let currentTicker = '';
+// Chart instances for financial charts
+let chartInsts = {};
 
+// ── HELPERS ──
 function fmt(n, d=1) {
   if (n == null || isNaN(n)) return '—';
   const a = Math.abs(n);
@@ -399,6 +436,7 @@ function fmt(n, d=1) {
   return n.toFixed(d);
 }
 function fmtPct(n, d=2) { return n == null || isNaN(n) ? '—' : n.toFixed(d)+'%'; }
+
 async function apiFetch(url) {
   const res = await fetch(url);
   if (!res.ok) {
@@ -414,12 +452,20 @@ async function apiFetch(url) {
   return await res.json();
 }
 
+function onApiChange() {
+  activeApi = document.getElementById('apiSelector').value;
+  document.getElementById('apiStatusLabel').textContent = APIS[activeApi].label;
+  if (currentTicker) loadTicker();
+}
+
+// ── INDEX QUOTES (always FMP) ──
 async function loadIndices() {
   try {
+    const { key, base } = APIS.fmp;
     const [dow, sp, nas] = await Promise.all([
-      apiFetch(BASE+'/stable/quote?symbol=DIA&apikey='+API_KEY),
-      apiFetch(BASE+'/stable/quote?symbol=SPY&apikey='+API_KEY),
-      apiFetch(BASE+'/stable/quote?symbol=QQQ&apikey='+API_KEY),
+      apiFetch(base+'/stable/quote?symbol=DIA&apikey='+key),
+      apiFetch(base+'/stable/quote?symbol=SPY&apikey='+key),
+      apiFetch(base+'/stable/quote?symbol=QQQ&apikey='+key),
     ]);
     setIdx('idxDow', dow?.[0]);
     setIdx('idxSP', sp?.[0]);
@@ -435,98 +481,18 @@ function setIdx(id, q) {
   el.className = 'idx-chg '+(up?'idx-up':'idx-dn');
 }
 
+// ── MAIN LOAD DISPATCHER ──
 async function loadTicker() {
   const ticker = document.getElementById('tickerInput').value.trim().toUpperCase();
   if (!ticker) return;
-  showLoading('Loading '+ticker+' data…');
+  showLoading('Loading '+ticker+' via '+APIS[activeApi].label+'…');
   hideError();
   try {
-    const [profile, metrics, quote, earnings] = await Promise.all([
-      apiFetch(BASE+'/stable/profile?symbol='+ticker+'&apikey='+API_KEY),
-      apiFetch(BASE+'/stable/key-metrics-ttm?symbol='+ticker+'&apikey='+API_KEY),
-      apiFetch(BASE+'/stable/quote?symbol='+ticker+'&apikey='+API_KEY),
-      apiFetch(BASE+'/stable/earnings-calendar?from='+todayPlus(0)+'&to='+todayPlus(60)+'&apikey='+API_KEY),
-    ]);
-    if (!profile || !profile.length) throw new Error('Ticker "'+ticker+'" not found');
-    const p = profile[0], q = quote[0]||{}, m = metrics[0]||{};
-
-    document.getElementById('topbarTitle').textContent = 'Insights — '+ticker;
-    document.getElementById('companyName').textContent = p.companyName || ticker;
-    document.getElementById('companySub').textContent = ticker+' | '+(p.exchangeShortName || p.exchange || '—');
-
-    currentPrice = q.price || p.price || 0;
-    document.getElementById('companyPrice').textContent = currentPrice ? '$'+currentPrice.toFixed(2) : '—';
-
-    const chgPct = q.changePercentage ?? null;
-    const chgAmt = q.change ?? null;
-    const up = chgPct >= 0;
-    const badge = document.getElementById('priceBadge');
-    badge.textContent = chgAmt != null && chgPct != null ? '$'+Math.abs(chgAmt).toFixed(2)+' | '+(up?'+':'')+chgPct.toFixed(2)+'%' : '—';
-    badge.className = 'price-badge '+(up?'up':'dn');
-
-    const ptb = document.getElementById('priceTrendBadge');
-    if (chgPct != null) {
-      ptb.textContent = (up?'↑':'↓')+Math.abs(chgPct).toFixed(2)+'%';
-      ptb.className = 'trend-badge '+(up?'up':'dn');
+    if (activeApi === 'fmp') {
+      await loadTickerFMP(ticker);
+    } else {
+      await loadTickerFinnhub(ticker);
     }
-
-    const mktCap = q.marketCap || p.mktCap || null;
-    const ev = m.enterpriseValueTTM ?? null;
-    const evToSales = m.evToSalesTTM ?? null;
-    const evToFcf = m.evToFreeCashFlowTTM ?? null;
-    const revTTM = (ev && evToSales && evToSales !== 0) ? ev / evToSales : null;
-    const fcfTTM = (ev && evToFcf && evToFcf !== 0) ? ev / evToFcf : null;
-    const sharesB = (mktCap && currentPrice) ? mktCap / currentPrice / 1e9 : 0;
-    const pe = m.peRatioTTM ?? q.pe ?? null;
-    const ps = m.priceToSalesRatioTTM ?? null;
-    const evEbitda = m.evToEBITDATTM ?? null;
-    const pb = m.pbRatioTTM ?? null;
-    const fcfYield = (fcfTTM && mktCap) ? (fcfTTM / mktCap) * 100 : null;
-    const fcfPerSh = (fcfTTM && sharesB) ? fcfTTM / (sharesB * 1e9) : null;
-    const sbc = m.stockBasedCompensationToRevenueTTM ?? null;
-    const margin = m.netProfitMarginTTM ?? null;
-    const opMargin = m.operatingProfitMarginTTM ?? null;
-    const eps = m.epsTTM ?? q.eps ?? null;
-    const roe = m.roeTTM ?? null;
-    const de = m.debtToEquityTTM ?? null;
-    const cash = m.cashAndCashEquivalentsTTM ?? null;
-    const debt = m.totalDebtTTM ?? null;
-    const net = (cash != null && debt != null) ? cash - debt : null;
-    const divAmt = p.lastDividend || p.lastDiv || null;
-    const divYield = (divAmt && currentPrice) ? (divAmt / currentPrice) * 100 : null;
-    const payout = m.payoutRatioTTM ?? null;
-
-    document.getElementById('mMktCap').textContent = mktCap ? '$'+fmt(mktCap) : '—';
-    document.getElementById('mPE').textContent = pe ? pe.toFixed(2) : '—';
-    document.getElementById('mPS').textContent = ps ? ps.toFixed(2) : '—';
-    document.getElementById('mEvEbitda').textContent = evEbitda ? evEbitda.toFixed(2) : '—';
-    document.getElementById('mPB').textContent = pb ? pb.toFixed(2) : '—';
-    document.getElementById('mFcfYield').textContent = fcfYield ? fmtPct(fcfYield) : '—';
-    document.getElementById('mFcfPerSh').textContent = fcfPerSh ? '$'+fcfPerSh.toFixed(2) : '—';
-    document.getElementById('mFCF').textContent = fcfTTM ? '$'+fmt(fcfTTM) : '—';
-    document.getElementById('mSBC').textContent = sbc != null ? '-'+fmtPct(sbc*100) : '—';
-    document.getElementById('mNetMargin').textContent = margin != null ? fmtPct(margin*100) : '—';
-    document.getElementById('mOpMargin').textContent = opMargin != null ? fmtPct(opMargin*100) : '—';
-    document.getElementById('mRevTTM').textContent = revTTM ? '$'+fmt(revTTM) : '—';
-    document.getElementById('mEPS').textContent = eps != null ? '$'+eps.toFixed(2) : '—';
-    document.getElementById('mROE').textContent = roe != null ? fmtPct(roe*100) : '—';
-    document.getElementById('mCash').textContent = cash != null ? '$'+fmt(cash) : '—';
-    document.getElementById('mDebt').textContent = debt != null ? '$'+fmt(debt) : '—';
-    document.getElementById('mNet').textContent = net != null ? '$'+fmt(net) : '—';
-    document.getElementById('mDE').textContent = de != null ? de.toFixed(2)+'x' : '—';
-    document.getElementById('mDivYield').textContent = divYield ? fmtPct(divYield) : '—';
-    document.getElementById('mPayoutRatio').textContent = payout != null ? fmtPct(payout*100) : '—';
-    document.getElementById('mDivAmt').textContent = divAmt ? '$'+parseFloat(divAmt).toFixed(2)+'/sh' : '—';
-
-    document.getElementById('dcfFcf').value = fcfTTM ? (fcfTTM/1e9).toFixed(1) : 0;
-    document.getElementById('dcfSh').value = sharesB.toFixed(2);
-    document.getElementById('dcfTicker').textContent = ticker;
-    calcDCF();
-
-    buildChartsUnavailable();
-    buildEarnings(earnings, ticker);
-    document.getElementById('aiBody').innerHTML = p.description || '<em>No company description available.</em>';
-
   } catch(e) {
     showError(e.message || 'Failed to load data.');
   } finally {
@@ -534,30 +500,409 @@ async function loadTicker() {
   }
 }
 
-function buildChartsUnavailable() {
-  ['revenueChartWrap','fcfChartWrap','netIncomeChartWrap','epsChartWrap','ebitdaChartWrap'].forEach(id => {
-    const wrap = document.getElementById(id);
-    if (wrap && !wrap.querySelector('.chart-locked')) {
-      wrap.innerHTML = '<div class="chart-locked"><div class="chart-locked-icon">🔒</div><div class="chart-locked-text">Historical financials require<br>an FMP paid plan</div></div>';
-    }
+// ══════════════════════════════════════════
+// FMP LOADER
+// ══════════════════════════════════════════
+async function loadTickerFMP(ticker) {
+  const { key, base } = APIS.fmp;
+  const [profile, metrics, quote, earnings] = await Promise.all([
+    apiFetch(base+'/stable/profile?symbol='+ticker+'&apikey='+key),
+    apiFetch(base+'/stable/key-metrics-ttm?symbol='+ticker+'&apikey='+key),
+    apiFetch(base+'/stable/quote?symbol='+ticker+'&apikey='+key),
+    apiFetch(base+'/stable/earnings-calendar?from='+todayPlus(0)+'&to='+todayPlus(60)+'&apikey='+key),
+  ]);
+  if (!profile || !profile.length) throw new Error('Ticker "'+ticker+'" not found');
+  const p = profile[0], q = quote[0]||{}, m = metrics[0]||{};
+
+  currentTicker = ticker;
+  currentPrice = q.price || p.price || 0;
+
+  // Header
+  setHeader(p.companyName || ticker, ticker+' | '+(p.exchangeShortName||'—'), currentPrice, q.changePercentage, q.change);
+
+  // Metrics
+  const mktCap = q.marketCap || p.mktCap || null;
+  const ev = m.enterpriseValueTTM ?? null;
+  const evToSales = m.evToSalesTTM ?? null;
+  const evToFcf = m.evToFreeCashFlowTTM ?? null;
+  const revTTM = (ev && evToSales && evToSales !== 0) ? ev / evToSales : null;
+  const fcfTTM = (ev && evToFcf && evToFcf !== 0) ? ev / evToFcf : null;
+  const sharesB = (mktCap && currentPrice) ? mktCap / currentPrice / 1e9 : 0;
+
+  setMetrics({
+    mktCap, pe: m.peRatioTTM ?? q.pe, ps: m.priceToSalesRatioTTM,
+    evEbitda: m.evToEBITDATTM, pb: m.pbRatioTTM,
+    fcfTTM, fcfYield: (fcfTTM && mktCap) ? (fcfTTM/mktCap)*100 : null,
+    fcfPerSh: (fcfTTM && sharesB) ? fcfTTM/(sharesB*1e9) : null,
+    sbc: m.stockBasedCompensationToRevenueTTM,
+    margin: m.netProfitMarginTTM, opMargin: m.operatingProfitMarginTTM,
+    revTTM, eps: m.epsTTM ?? q.eps, roe: m.roeTTM,
+    cash: m.cashAndCashEquivalentsTTM, debt: m.totalDebtTTM,
+    de: m.debtToEquityTTM,
+    divAmt: p.lastDividend || p.lastDiv,
+    divYield: (p.lastDividend||p.lastDiv) && currentPrice ? ((p.lastDividend||p.lastDiv)/currentPrice)*100 : null,
+    payout: m.payoutRatioTTM
   });
-  buildPricePlaceholder();
+
+  document.getElementById('dcfFcf').value = fcfTTM ? (fcfTTM/1e9).toFixed(1) : 0;
+  document.getElementById('dcfSh').value = sharesB.toFixed(2);
+  document.getElementById('dcfTicker').textContent = ticker;
+  calcDCF();
+
+  buildChartsUnavailable('Historical financials require an FMP paid plan ($19/mo)');
+  buildEarnings(earnings, ticker);
+  buildPriceChart(ticker);
+  document.getElementById('aiBody').innerHTML = p.description || '<em>No company description available.</em>';
 }
 
-function buildPricePlaceholder() {
+// ══════════════════════════════════════════
+// FINNHUB LOADER
+// ══════════════════════════════════════════
+async function loadTickerFinnhub(ticker) {
+  const { key, base } = APIS.finnhub;
+
+  const [profile, quote, metrics, earningsCalendar] = await Promise.all([
+    apiFetch(base+'/stock/profile2?symbol='+ticker+'&token='+key),
+    apiFetch(base+'/quote?symbol='+ticker+'&token='+key),
+    apiFetch(base+'/stock/metric?symbol='+ticker+'&metric=all&token='+key),
+    apiFetch(base+'/calendar/earnings?from='+todayPlus(0)+'&to='+todayPlus(60)+'&token='+key),
+  ]);
+
+  if (!profile || !profile.ticker) throw new Error('Ticker "'+ticker+'" not found on Finnhub');
+
+  currentTicker = ticker;
+  currentPrice = quote.c || 0;
+  const chgAmt = quote.d ?? null;
+  const chgPct = quote.dp ?? null;
+
+  setHeader(profile.name || ticker, ticker+' | '+(profile.exchange||'—'), currentPrice, chgPct, chgAmt);
+
+  const m = metrics.metric || {};
+  const mktCap = profile.marketCapitalization ? profile.marketCapitalization * 1e6 : null;
+  const sharesB = profile.shareOutstanding ? profile.shareOutstanding / 1e3 : 0; // Finnhub gives millions, convert to B
+
+  setMetrics({
+    mktCap,
+    pe: m['peBasicExclExtraTTM'] ?? m['peTTM'],
+    ps: m['psTTM'],
+    evEbitda: m['evEbitdaTTM'] ?? m['evEbitda'],
+    pb: m['pbQuarterly'] ?? m['pbAnnual'],
+    fcfTTM: m['freeCashFlowTTMPerShare'] && sharesB ? m['freeCashFlowTTMPerShare'] * sharesB * 1e9 : null,
+    fcfYield: m['fcfYieldTTM'] ? m['fcfYieldTTM'] * 100 : null,
+    fcfPerSh: m['freeCashFlowTTMPerShare'],
+    sbc: null,
+    margin: m['netProfitMarginTTM'] != null ? m['netProfitMarginTTM'] / 100 : null,
+    opMargin: m['operatingMarginTTM'] != null ? m['operatingMarginTTM'] / 100 : null,
+    revTTM: m['revenuePerShareTTM'] && sharesB ? m['revenuePerShareTTM'] * sharesB * 1e9 : null,
+    eps: m['epsTTM'],
+    roe: m['roeTTM'] != null ? m['roeTTM'] / 100 : null,
+    cash: m['totalCashPerSharePerAnnual'] && sharesB ? m['totalCashPerSharePerAnnual'] * sharesB * 1e9 : null,
+    debt: null,
+    de: m['totalDebtToEquityAnnual'],
+    divAmt: m['dividendsPerShareAnnual'],
+    divYield: m['dividendYieldIndicatedAnnual'],
+    payout: m['payoutRatioAnnual'] != null ? m['payoutRatioAnnual'] / 100 : null,
+  });
+
+  // DCF
+  const fcfForDcf = m['freeCashFlowTTMPerShare'] && sharesB ? m['freeCashFlowTTMPerShare'] * sharesB : 0;
+  document.getElementById('dcfFcf').value = fcfForDcf.toFixed(1);
+  document.getElementById('dcfSh').value = sharesB.toFixed(2);
+  document.getElementById('dcfTicker').textContent = ticker;
+  calcDCF();
+
+  // Financial charts — Finnhub has free basic financials
+  await buildFinnhubCharts(ticker);
+
+  // Earnings
+  const erRows = (earningsCalendar.earningsCalendar || []).filter(e => e.symbol === ticker || true).slice(0, 8);
+  buildEarningsFinnhub(earningsCalendar.earningsCalendar || [], ticker);
+
+  // Price chart
+  buildPriceChartFinnhub(ticker);
+
+  // Profile
+  document.getElementById('aiBody').innerHTML = [
+    profile.name ? `<strong>${profile.name}</strong> (${ticker}) trades on ${profile.exchange}.` : '',
+    profile.finnhubIndustry ? ` Industry: <strong>${profile.finnhubIndustry}</strong>.` : '',
+    profile.ipo ? ` IPO date: ${profile.ipo}.` : '',
+    profile.weburl ? ` <a href="${profile.weburl}" target="_blank" style="color:var(--blue)">${profile.weburl}</a>` : '',
+  ].filter(Boolean).join('') || '<em>No company profile available.</em>';
+}
+
+// ── FINNHUB FINANCIAL CHARTS ──
+async function buildFinnhubCharts(ticker) {
+  const { key, base } = APIS.finnhub;
+  try {
+    const data = await apiFetch(base+'/stock/financials-reported?symbol='+ticker+'&freq=annual&token='+key);
+    const reports = (data.data || []).slice(0, 5).reverse(); // oldest → newest, last 5 years
+
+    if (!reports.length) {
+      buildChartsUnavailable('No financial data available for this ticker on Finnhub');
+      return;
+    }
+
+    const labels = reports.map(r => r.year ? String(r.year) : (r.period || ''));
+
+    // Helper to extract a value from report ic/bs/cf by concept
+    function getVal(report, section, ...concepts) {
+      const items = report.report?.[section] || [];
+      for (const concept of concepts) {
+        const found = items.find(i => i.concept === concept || (i.label && i.label.toLowerCase().includes(concept.toLowerCase())));
+        if (found && found.value != null) return found.value;
+      }
+      return null;
+    }
+
+    const revenues  = reports.map(r => getVal(r, 'ic', 'Revenues', 'RevenueFromContractWithCustomerExcludingAssessedTax', 'SalesRevenueNet'));
+    const netIncs   = reports.map(r => getVal(r, 'ic', 'NetIncomeLoss', 'ProfitLoss'));
+    const eps_vals  = reports.map(r => getVal(r, 'ic', 'EarningsPerShareDiluted', 'EarningsPerShareBasic'));
+    const opCF      = reports.map(r => getVal(r, 'cf', 'NetCashProvidedByUsedInOperatingActivities'));
+    const capex     = reports.map(r => getVal(r, 'cf', 'PaymentsToAcquirePropertyPlantAndEquipment'));
+    const fcf       = opCF.map((v, i) => (v != null && capex[i] != null) ? v - Math.abs(capex[i]) : null);
+    const ebitda    = reports.map(r => {
+      const ni = getVal(r, 'ic', 'NetIncomeLoss');
+      const tax = getVal(r, 'ic', 'IncomeTaxExpenseBenefit');
+      const int_ = getVal(r, 'ic', 'InterestExpense');
+      const dep = getVal(r, 'cf', 'DepreciationDepletionAndAmortization', 'Depreciation');
+      if (ni == null) return null;
+      return ni + (tax||0) + (int_||0) + (dep||0);
+    });
+
+    buildFinancialChart('revenueChart', 'revenueChartWrap', labels, revenues, 'Revenue', '#3b82f6');
+    buildFinancialChart('fcfChart', 'fcfChartWrap', labels, fcf, 'Free Cash Flow', '#10b981');
+    buildFinancialChart('netIncomeChart', 'netIncomeChartWrap', labels, netIncs, 'Net Income', '#22c55e');
+    buildFinancialChart('epsChart', 'epsChartWrap', labels, eps_vals, 'EPS', '#f59e0b', true);
+    buildFinancialChart('ebitdaChart', 'ebitdaChartWrap', labels, ebitda, 'EBITDA', '#8b5cf6');
+
+  } catch(e) {
+    console.warn('Finnhub financials error:', e.message);
+    buildChartsUnavailable('Financial data unavailable: '+e.message);
+  }
+}
+
+function buildFinancialChart(canvasId, wrapId, labels, data, label, color, isSmall=false) {
+  const wrap = document.getElementById(wrapId);
+  const canvas = document.getElementById(canvasId);
+
+  // Clean up existing
+  const existingChart = Chart.getChart(canvas);
+  if (existingChart) existingChart.destroy();
+  if (chartInsts[canvasId]) { chartInsts[canvasId].destroy(); delete chartInsts[canvasId]; }
+  wrap.querySelectorAll('.chart-locked').forEach(el => el.remove());
+
+  const hasData = data.some(v => v != null);
+  if (!hasData) {
+    canvas.style.display = 'none';
+    wrap.innerHTML = '<div class="chart-locked"><div class="chart-locked-icon">📭</div><div class="chart-locked-text">No data available</div></div>';
+    return;
+  }
+
+  canvas.style.display = '';
+  const isPrice = canvasId === 'priceChart';
+  const up = data.filter(v=>v!=null).slice(-1)[0] >= data.filter(v=>v!=null)[0];
+
+  chartInsts[canvasId] = new Chart(canvas, {
+    type: isSmall ? 'line' : 'bar',
+    data: {
+      labels,
+      datasets: [{
+        data,
+        backgroundColor: isSmall ? 'transparent' : color+'33',
+        borderColor: color,
+        borderWidth: isSmall ? 2 : 1,
+        borderRadius: isSmall ? 0 : 4,
+        fill: isSmall,
+        tension: 0.35,
+        pointRadius: isSmall ? 3 : 0,
+        pointBackgroundColor: color,
+      }]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          backgroundColor: '#fff', borderColor: '#e1e4e8', borderWidth: 1,
+          titleColor: '#111827', bodyColor: '#6b7280', padding: 8,
+          callbacks: {
+            label: ctx => {
+              const v = ctx.parsed.y;
+              if (v == null) return '—';
+              if (isSmall) return '$'+v.toFixed(2);
+              if (Math.abs(v) >= 1e9) return '$'+(v/1e9).toFixed(2)+'B';
+              if (Math.abs(v) >= 1e6) return '$'+(v/1e6).toFixed(2)+'M';
+              return '$'+v.toFixed(2);
+            }
+          }
+        }
+      },
+      scales: {
+        x: {
+          display: true, grid: { display: false },
+          ticks: { font: { size: 10, family: 'Inter' }, color: '#9ca3af' },
+          border: { display: false }
+        },
+        y: {
+          display: true, position: 'right',
+          grid: { color: 'rgba(0,0,0,0.04)' }, border: { display: false },
+          ticks: {
+            font: { size: 10, family: 'Inter' }, color: '#9ca3af', maxTicksLimit: 4,
+            callback: v => {
+              if (isSmall) return '$'+v.toFixed(1);
+              if (Math.abs(v) >= 1e9) return '$'+(v/1e9).toFixed(0)+'B';
+              if (Math.abs(v) >= 1e6) return '$'+(v/1e6).toFixed(0)+'M';
+              return '$'+v.toFixed(0);
+            }
+          }
+        }
+      }
+    }
+  });
+}
+
+// ── FINNHUB PRICE CHART ──
+async function buildPriceChartFinnhub(ticker) {
+  const { key, base } = APIS.finnhub;
   const canvas = document.getElementById('priceChart');
+  const wrap = canvas.parentElement;
   if (priceChartInst) { priceChartInst.destroy(); priceChartInst = null; }
-  if (!currentPrice) return;
-  const pts = [];
-  let v = currentPrice * 0.82;
-  for (let i = 0; i < 30; i++) { v += (Math.random()-0.45)*currentPrice*0.014; pts.push(+v.toFixed(2)); }
-  pts.push(currentPrice);
+  wrap.querySelectorAll('.chart-locked').forEach(el => el.remove());
+
+  try {
+    const to = Math.floor(Date.now()/1000);
+    const from = to - 365*24*3600;
+    const data = await apiFetch(base+'/stock/candle?symbol='+ticker+'&resolution=W&from='+from+'&to='+to+'&token='+key);
+
+    if (!data || data.s !== 'ok' || !data.c || !data.c.length) throw new Error('No price data');
+
+    const pts = data.c;
+    const labels = data.t.map(ts => new Date(ts*1000).toISOString().slice(0,7));
+    const up = pts[pts.length-1] >= pts[0];
+    const color = up ? '#1a7f37' : '#cf222e';
+
+    canvas.style.display = '';
+    priceChartInst = new Chart(canvas, {
+      type: 'line',
+      data: { labels, datasets: [{ data: pts, borderColor: color, backgroundColor: up?'rgba(26,127,55,0.08)':'rgba(207,34,46,0.08)', fill: true, tension: 0.35, pointRadius: 0, borderWidth: 1.5 }] },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        plugins: { legend: { display: false }, tooltip: {
+          backgroundColor: '#fff', borderColor: '#e1e4e8', borderWidth: 1,
+          titleColor: '#111827', bodyColor: '#6b7280', padding: 8,
+          callbacks: { label: ctx => '$'+ctx.parsed.y.toFixed(2) }
+        }},
+        scales: {
+          x: { display: true, grid: { display: false }, ticks: { display: true, maxTicksLimit: 6, font: { size: 10, family: 'Inter' }, color: '#9ca3af' }, border: { display: false } },
+          y: { display: true, position: 'right', grid: { color: 'rgba(0,0,0,0.05)' }, border: { display: false }, ticks: { font: { size: 10, family: 'Inter' }, color: '#9ca3af', maxTicksLimit: 4, callback: v => '$'+v.toFixed(0) } }
+        }
+      }
+    });
+  } catch(e) {
+    canvas.style.display = 'none';
+    const msg = document.createElement('div');
+    msg.className = 'chart-locked';
+    msg.innerHTML = '<div class="chart-locked-icon">📊</div><div class="chart-locked-text">Price history unavailable</div>';
+    wrap.appendChild(msg);
+  }
+}
+
+// ── FMP PRICE CHART ──
+async function buildPriceChart(ticker) {
+  const { key, base } = APIS.fmp;
+  const canvas = document.getElementById('priceChart');
+  const wrap = canvas.parentElement;
+  if (priceChartInst) { priceChartInst.destroy(); priceChartInst = null; }
+  wrap.querySelectorAll('.chart-locked').forEach(el => el.remove());
+
+  let pts = [], labels = [];
+  try {
+    const data = await apiFetch(base+'/stable/historical-price-eod/light?symbol='+ticker+'&limit=365&apikey='+key);
+    if (data && Array.isArray(data) && data.length > 0) {
+      const sorted = [...data].reverse();
+      labels = sorted.map(d => d.date);
+      pts    = sorted.map(d => d.close ?? d.price ?? d.adjClose ?? null).filter(v => v != null);
+      labels = labels.slice(labels.length - pts.length);
+    }
+  } catch(e) { console.warn('FMP price history:', e.message); }
+
+  if (!pts.length) {
+    canvas.style.display = 'none';
+    const msg = document.createElement('div');
+    msg.className = 'chart-locked';
+    msg.innerHTML = '<div class="chart-locked-icon">📊</div><div class="chart-locked-text">Price history unavailable</div>';
+    wrap.appendChild(msg);
+    return;
+  }
+
+  canvas.style.display = '';
   const up = pts[pts.length-1] >= pts[0];
   const color = up ? '#1a7f37' : '#cf222e';
   priceChartInst = new Chart(canvas, {
     type: 'line',
-    data: { labels: pts.map((_,i)=>i), datasets: [{ data: pts, borderColor: color, backgroundColor: up?'rgba(26,127,55,0.08)':'rgba(207,34,46,0.08)', fill: true, tension: 0.35, pointRadius: 0, borderWidth: 1.5 }] },
-    options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false }, tooltip: { enabled: false } }, scales: { x: { display: false }, y: { display: false } } }
+    data: { labels, datasets: [{ data: pts, borderColor: color, backgroundColor: up?'rgba(26,127,55,0.08)':'rgba(207,34,46,0.08)', fill: true, tension: 0.35, pointRadius: 0, borderWidth: 1.5 }] },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { display: false }, tooltip: {
+        backgroundColor: '#fff', borderColor: '#e1e4e8', borderWidth: 1,
+        titleColor: '#111827', bodyColor: '#6b7280', padding: 8,
+        callbacks: { label: ctx => '$'+ctx.parsed.y.toFixed(2) }
+      }},
+      scales: {
+        x: { display: true, grid: { display: false }, ticks: { display: true, maxTicksLimit: 6, font: { size: 10, family: 'Inter' }, color: '#9ca3af', callback: function(val,i){ return labels[i]?labels[i].slice(0,7):''; }}, border: { display: false }},
+        y: { display: true, position: 'right', grid: { color: 'rgba(0,0,0,0.05)' }, border: { display: false }, ticks: { font: { size: 10, family: 'Inter' }, color: '#9ca3af', maxTicksLimit: 4, callback: v => '$'+v.toFixed(0) }}
+      }
+    }
+  });
+}
+
+// ── SHARED UI SETTERS ──
+function setHeader(name, sub, price, chgPct, chgAmt) {
+  document.getElementById('topbarTitle').textContent = 'Insights — ' + currentTicker;
+  document.getElementById('companyName').textContent = name;
+  document.getElementById('companySub').textContent = sub;
+  document.getElementById('companyPrice').textContent = price ? '$'+price.toFixed(2) : '—';
+  const up = (chgPct ?? 0) >= 0;
+  const badge = document.getElementById('priceBadge');
+  badge.textContent = chgAmt != null && chgPct != null ? '$'+Math.abs(chgAmt).toFixed(2)+' | '+(up?'+':'')+chgPct.toFixed(2)+'%' : '—';
+  badge.className = 'price-badge '+(up?'up':'dn');
+  const ptb = document.getElementById('priceTrendBadge');
+  if (chgPct != null) { ptb.textContent = (up?'↑':'↓')+Math.abs(chgPct).toFixed(2)+'%'; ptb.className = 'trend-badge '+(up?'up':'dn'); }
+}
+
+function setMetrics(d) {
+  const net = (d.cash != null && d.debt != null) ? d.cash - d.debt : null;
+  document.getElementById('mMktCap').textContent       = d.mktCap ? '$'+fmt(d.mktCap) : '—';
+  document.getElementById('mPE').textContent           = d.pe ? parseFloat(d.pe).toFixed(2) : '—';
+  document.getElementById('mPS').textContent           = d.ps ? parseFloat(d.ps).toFixed(2) : '—';
+  document.getElementById('mEvEbitda').textContent     = d.evEbitda ? parseFloat(d.evEbitda).toFixed(2) : '—';
+  document.getElementById('mPB').textContent           = d.pb ? parseFloat(d.pb).toFixed(2) : '—';
+  document.getElementById('mFcfYield').textContent     = d.fcfYield ? fmtPct(d.fcfYield) : '—';
+  document.getElementById('mFcfPerSh').textContent     = d.fcfPerSh ? '$'+parseFloat(d.fcfPerSh).toFixed(2) : '—';
+  document.getElementById('mFCF').textContent          = d.fcfTTM ? '$'+fmt(d.fcfTTM) : '—';
+  document.getElementById('mSBC').textContent          = d.sbc != null ? '-'+fmtPct(d.sbc*100) : '—';
+  document.getElementById('mNetMargin').textContent    = d.margin != null ? fmtPct(d.margin*100) : '—';
+  document.getElementById('mOpMargin').textContent     = d.opMargin != null ? fmtPct(d.opMargin*100) : '—';
+  document.getElementById('mRevTTM').textContent       = d.revTTM ? '$'+fmt(d.revTTM) : '—';
+  document.getElementById('mEPS').textContent          = d.eps != null ? '$'+parseFloat(d.eps).toFixed(2) : '—';
+  document.getElementById('mROE').textContent          = d.roe != null ? fmtPct(d.roe*100) : '—';
+  document.getElementById('mCash').textContent         = d.cash != null ? '$'+fmt(d.cash) : '—';
+  document.getElementById('mDebt').textContent         = d.debt != null ? '$'+fmt(d.debt) : '—';
+  document.getElementById('mNet').textContent          = net != null ? '$'+fmt(net) : '—';
+  document.getElementById('mDE').textContent           = d.de != null ? parseFloat(d.de).toFixed(2)+'x' : '—';
+  document.getElementById('mDivYield').textContent     = d.divYield ? fmtPct(d.divYield) : '—';
+  document.getElementById('mPayoutRatio').textContent  = d.payout != null ? fmtPct(d.payout*100) : '—';
+  document.getElementById('mDivAmt').textContent       = d.divAmt ? '$'+parseFloat(d.divAmt).toFixed(2)+'/sh' : '—';
+}
+
+function buildChartsUnavailable(msg) {
+  ['revenueChartWrap','fcfChartWrap','netIncomeChartWrap','epsChartWrap','ebitdaChartWrap'].forEach(id => {
+    const wrap = document.getElementById(id);
+    if (!wrap) return;
+    // Destroy any existing chart in the canvas inside
+    const canvas = wrap.querySelector('canvas');
+    if (canvas) { const c = Chart.getChart(canvas); if (c) c.destroy(); canvas.style.display = 'none'; }
+    wrap.innerHTML = (canvas ? canvas.outerHTML : '') + '<div class="chart-locked"><div class="chart-locked-icon">🔒</div><div class="chart-locked-text">'+msg+'</div></div>';
   });
 }
 
@@ -570,9 +915,26 @@ function buildEarnings(data, currentTicker) {
   }
   data.slice(0,8).forEach(e => {
     const tr = document.createElement('tr');
-    const epsEst = e.epsEstimated != null ? '$'+e.epsEstimated.toFixed(2) : '—';
+    const epsEst = e.epsEstimated != null ? '$'+parseFloat(e.epsEstimated).toFixed(2) : '—';
     const revEst = e.revenueEstimated != null ? '$'+fmt(e.revenueEstimated) : '—';
     tr.innerHTML = '<td style="font-size:12px;color:var(--muted);white-space:nowrap">'+e.date+'</td><td><span class="t-sym" style="'+(e.symbol===currentTicker?'color:var(--blue)':'')+'">'+e.symbol+'</span></td><td class="t-num">'+epsEst+'</td><td class="t-num t-dim">'+revEst+'</td>';
+    body.appendChild(tr);
+  });
+}
+
+function buildEarningsFinnhub(data, ticker) {
+  const body = document.getElementById('erBody');
+  body.innerHTML = '';
+  const filtered = (data || []).filter(e => !e.symbol || e.symbol === ticker || data.length < 20);
+  if (!filtered.length) {
+    body.innerHTML = '<tr><td colspan="4" style="color:var(--muted);font-size:12px;padding:12px">No upcoming earnings found</td></tr>';
+    return;
+  }
+  filtered.slice(0,8).forEach(e => {
+    const tr = document.createElement('tr');
+    const epsEst = e.epsEstimate != null ? '$'+parseFloat(e.epsEstimate).toFixed(2) : '—';
+    const revEst = e.revenueEstimate != null ? '$'+fmt(e.revenueEstimate) : '—';
+    tr.innerHTML = '<td style="font-size:12px;color:var(--muted);white-space:nowrap">'+(e.date||'—')+'</td><td><span class="t-sym" style="color:var(--blue)">'+(e.symbol||ticker)+'</span></td><td class="t-num">'+epsEst+'</td><td class="t-num t-dim">'+revEst+'</td>';
     body.appendChild(tr);
   });
 }
@@ -615,6 +977,123 @@ function ctrlClick(btn){btn.closest('.ctrl-group').querySelectorAll('.ctrl-btn')
 
 loadTicker();
 loadIndices();
+
+// ── CHART MODAL ──
+let modalChartInst = null;
+
+function openChartModal(title, sourceCanvasId) {
+  const overlay = document.getElementById('chartModalOverlay');
+  document.getElementById('chartModalTitle').textContent = title + ' — ' + currentTicker;
+
+  // Destroy previous modal chart
+  if (modalChartInst) { modalChartInst.destroy(); modalChartInst = null; }
+
+  const sourceCanvas = document.getElementById(sourceCanvasId);
+  const sourceChart = Chart.getChart(sourceCanvas);
+
+  const modalCanvas = document.getElementById('chartModalCanvas');
+
+  if (sourceChart) {
+    // Clone the chart config with axes enabled and larger size
+    const cfg = sourceChart.config;
+    const newOptions = JSON.parse(JSON.stringify(cfg.options || {}));
+
+    // Enable axes
+    newOptions.scales = newOptions.scales || {};
+    newOptions.scales.x = {
+      display: true,
+      grid: { color: 'rgba(0,0,0,0.06)' },
+      ticks: { font: { size: 11, family: 'Inter' }, color: '#6b7280', maxTicksLimit: 10 }
+    };
+    newOptions.scales.y = {
+      display: true,
+      grid: { color: 'rgba(0,0,0,0.06)' },
+      ticks: {
+        font: { size: 11, family: 'Inter' }, color: '#6b7280',
+        callback: v => {
+          if (Math.abs(v) >= 1e12) return '$' + (v/1e12).toFixed(1) + 'T';
+          if (Math.abs(v) >= 1e9)  return '$' + (v/1e9).toFixed(1) + 'B';
+          if (Math.abs(v) >= 1e6)  return '$' + (v/1e6).toFixed(1) + 'M';
+          if (Math.abs(v) >= 1e3)  return '$' + (v/1e3).toFixed(0) + 'K';
+          return '$' + v.toFixed(2);
+        }
+      }
+    };
+    newOptions.plugins = newOptions.plugins || {};
+    newOptions.plugins.legend = { display: false };
+    newOptions.plugins.tooltip = {
+      backgroundColor: '#fff',
+      borderColor: '#e1e4e8',
+      borderWidth: 1,
+      titleColor: '#111827',
+      bodyColor: '#6b7280',
+      padding: 10,
+      callbacks: {
+        label: ctx => {
+          const v = ctx.parsed.y;
+          if (Math.abs(v) >= 1e9)  return '$' + (v/1e9).toFixed(2) + 'B';
+          if (Math.abs(v) >= 1e6)  return '$' + (v/1e6).toFixed(2) + 'M';
+          return '$' + v.toFixed(2);
+        }
+      }
+    };
+    newOptions.maintainAspectRatio = false;
+    newOptions.responsive = true;
+    newOptions.animation = { duration: 300 };
+
+    modalChartInst = new Chart(modalCanvas, {
+      type: cfg.type,
+      data: JSON.parse(JSON.stringify(cfg.data)),
+      options: newOptions
+    });
+  } else {
+    // No chart (locked) — show message
+    const ctx = modalCanvas.getContext('2d');
+    ctx.clearRect(0, 0, modalCanvas.width, modalCanvas.height);
+    modalChartInst = new Chart(modalCanvas, {
+      type: 'line',
+      data: { labels: [], datasets: [] },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        plugins: {
+          legend: { display: false },
+          tooltip: { enabled: false },
+          title: { display: true, text: 'Historical data requires an FMP paid plan', color: '#6b7280', font: { size: 14 } }
+        },
+        scales: { x: { display: false }, y: { display: false } }
+      }
+    });
+  }
+
+  overlay.classList.add('open');
+}
+
+function closeChartModal() {
+  document.getElementById('chartModalOverlay').classList.remove('open');
+  if (modalChartInst) { modalChartInst.destroy(); modalChartInst = null; }
+}
+
+// Close on overlay click
+document.getElementById('chartModalOverlay').addEventListener('click', function(e) {
+  if (e.target === this) closeChartModal();
+});
+
+// Close on Escape
+document.addEventListener('keydown', e => { if (e.key === 'Escape') closeChartModal(); });
+
 </script>
+<!-- CHART MODAL -->
+<div class="chart-modal-overlay" id="chartModalOverlay">
+  <div class="chart-modal">
+    <div class="chart-modal-header">
+      <div class="chart-modal-title" id="chartModalTitle">Chart</div>
+      <button class="chart-modal-close" onclick="closeChartModal()">✕</button>
+    </div>
+    <div class="chart-modal-body">
+      <canvas id="chartModalCanvas" style="width:100%;height:100%"></canvas>
+    </div>
+  </div>
+</div>
+
 </body>
 </html>
