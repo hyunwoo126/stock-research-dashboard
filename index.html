@@ -342,6 +342,13 @@
           </div>
           <div class="chart-body" id="priceChartWrap"><canvas id="priceChart" height="160"></canvas><div class="section-loading" id="priceLoading" style="height:160px"><div class="section-spinner"></div><span class="section-loading-text">Loading price data…</span></div></div>
         </div>
+        <div class="chart-card" data-title="P/E Ratio" onclick="openChartModal('P/E Ratio','peChart')">
+          <div class="chart-card-header">
+            <div class="chart-card-title">P/E Ratio</div>
+            <button class="chart-expand-btn" onclick="event.stopPropagation();openChartModal('P/E Ratio','peChart')">⤢</button>
+          </div>
+          <div class="chart-body" id="peChartWrap"><canvas id="peChart" style="display:none" height="160"></canvas><div class="section-loading" id="peLoading" style="height:160px"><div class="section-spinner"></div><span class="section-loading-text">Loading…</span></div></div>
+        </div>
         <div class="chart-card" data-title="Revenue" onclick="openChartModal('Revenue','revenueChart')">
           <div class="chart-card-header">
             <div class="chart-card-title">Revenue</div>
@@ -734,6 +741,7 @@ async function loadTickerFMP(ticker) {
   setDCF(fcfTTM ? fcfTTM/1e9 : 0, sharesB, ticker);
 
   buildChartsUnavailable('Historical financials require an FMP paid plan ($19/mo)');
+  buildPELineChart([], [], null); // FMP historical P/E paywalled
   buildEarnings(earnings, ticker);
   buildPriceChart(ticker);
   document.getElementById('aiBody').innerHTML = p.description || '<em>No company description available.</em>';
@@ -799,6 +807,7 @@ async function loadTickerFinnhub(ticker) {
 
   // Financial charts — Finnhub has free basic financials
   await buildFinnhubCharts(ticker);
+  buildFinnhubPEChart(ticker); // async, doesn't block
 
   // Earnings
   buildEarningsFinnhub(earningsCalendar.earningsCalendar || [], ticker);
@@ -905,6 +914,7 @@ async function loadTickerAlphaVantage(ticker) {
   // ── Financial Charts (from annual reports) ──
   buildAlphaVantageCharts(incomeRaw, cashFlowRaw, earningsRaw, 'Annually');
   lastRawData = { api: 'alphavantage', incomeRaw, cashFlowRaw, earningsRaw };
+  buildAVPEChart(incomeRaw, earningsRaw); // compute P/E from AV data
 
   // ── Price Chart from TIME_SERIES_DAILY (free, last 100 days) ──
   await buildPriceChartAV(ticker);
@@ -1218,6 +1228,7 @@ async function loadTickerTwelveData(ticker) {
 
   // Financial charts: all require paid plan
   buildChartsUnavailable('Historical financials require a Twelve Data Grow plan ($29/mo)');
+  buildPELineChart([], [], null); // TD P/E paywalled
 
   // Price chart: /time_series is FREE — best feature of TD free tier
   await buildPriceChartTD(ticker);
@@ -1643,8 +1654,248 @@ function setMetrics(d) {
   document.getElementById('mDivAmt').textContent       = d.divAmt ? '$'+parseFloat(d.divAmt).toFixed(2)+'/sh' : '—';
 }
 
+// ── P/E RATIO CHART ──
+// Shared renderer — labels = string dates, pts = numeric P/E values
+function buildPELineChart(labels, pts, source) {
+  const wrap = document.getElementById('peChartWrap');
+  const canvas = document.getElementById('peChart');
+  if (!wrap || !canvas) return;
+
+  // Destroy existing
+  const existing = Chart.getChart(canvas);
+  if (existing) existing.destroy();
+  wrap.querySelectorAll('.chart-locked, .section-loading').forEach(el => el.remove());
+  elHide('peLoading');
+
+  if (!pts || pts.length < 2) {
+    canvas.style.display = 'none';
+    const msg = document.createElement('div');
+    msg.className = 'chart-locked';
+    msg.innerHTML = '<div class="chart-locked-icon">📊</div><div class="chart-locked-text">P/E history unavailable</div>';
+    wrap.appendChild(msg);
+    return;
+  }
+
+  canvas.style.display = '';
+  const avg = pts.reduce((a,b) => a+b, 0) / pts.length;
+  const color = '#8b5cf6';
+
+  new Chart(canvas, {
+    type: 'line',
+    data: {
+      labels,
+      datasets: [
+        {
+          data: pts,
+          borderColor: color,
+          backgroundColor: 'rgba(139,92,246,0.07)',
+          fill: true,
+          tension: 0.3,
+          pointRadius: 0,
+          pointHoverRadius: 4,
+          pointHoverBackgroundColor: color,
+          borderWidth: 1.5,
+          label: 'P/E'
+        },
+        {
+          data: Array(pts.length).fill(parseFloat(avg.toFixed(1))),
+          borderColor: 'rgba(139,92,246,0.35)',
+          borderDash: [5,4],
+          borderWidth: 1,
+          pointRadius: 0,
+          fill: false,
+          label: 'Avg ' + avg.toFixed(1) + 'x',
+        }
+      ]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      interaction: { mode: 'index', intersect: false },
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          backgroundColor: '#fff', borderColor: '#e1e4e8', borderWidth: 1,
+          titleColor: '#111827', bodyColor: '#6b7280', padding: 8,
+          displayColors: false,
+          callbacks: {
+            label: ctx => ctx.datasetIndex === 0
+              ? 'P/E: ' + ctx.parsed.y.toFixed(1) + 'x'
+              : 'Avg: ' + ctx.parsed.y.toFixed(1) + 'x'
+          }
+        }
+      },
+      scales: {
+        x: { display: true, grid: { display: false }, border: { display: false }, ticks: { maxTicksLimit: 6, font: { size: 10, family: 'Inter' }, color: '#9ca3af', callback: function(val,i){ return labels[i] ? labels[i].slice(0,7) : ''; } } },
+        y: { display: true, position: 'right', grid: { color: 'rgba(0,0,0,0.05)' }, border: { display: false }, ticks: { font: { size: 10, family: 'Inter' }, color: '#9ca3af', maxTicksLimit: 5, callback: v => v.toFixed(0)+'x' } }
+      }
+    }
+  });
+
+  // Show source badge in card header
+  const card = wrap.closest('.chart-card');
+  if (card && source) {
+    let badge = card.querySelector('.pe-source-badge');
+    if (!badge) {
+      badge = document.createElement('span');
+      badge.className = 'pe-source-badge';
+      badge.style.cssText = 'font-size:10px;color:var(--muted2);margin-left:6px;font-weight:400';
+      const title = card.querySelector('.chart-card-title');
+      if (title) title.appendChild(badge);
+    }
+    badge.textContent = source;
+  }
+}
+
+// Finnhub: fetch /stock/metric series.pe — fall back to computing from XBRL EPS + price history
+async function buildFinnhubPEChart(ticker) {
+  const { key, base } = APIS.finnhub;
+  elShow('peLoading', 'flex');
+
+  try {
+    const metricData = await apiFetch(`${base}/stock/metric?symbol=${ticker}&metric=all&token=${key}`);
+    const series = metricData?.series;
+
+    // Try weekly P/E series first (free tier may return this)
+    const peSeries = series?.weekly?.pe || series?.pe || null;
+
+    if (peSeries && Array.isArray(peSeries) && peSeries.length > 10) {
+      // peSeries is array of { period: "YYYY-MM-DD", v: number }
+      const sorted = [...peSeries].sort((a,b) => a.period.localeCompare(b.period));
+      const labels = sorted.map(d => d.period);
+      const pts    = sorted.map(d => d.v).filter(v => v > 0 && v < 500);
+      buildPELineChart(labels, pts, 'Finnhub · weekly');
+      return;
+    }
+
+    // Fall back: compute P/E from XBRL quarterly EPS + FMP price history
+    // Use already-fetched XBRL data in lastRawData if available
+    await buildComputedPEChart(ticker);
+
+  } catch(e) {
+    console.warn('Finnhub P/E chart error:', e.message);
+    await buildComputedPEChart(ticker);
+  }
+}
+
+// Compute P/E from quarterly EPS (XBRL) × price history (FMP EOD)
+async function buildComputedPEChart(ticker) {
+  try {
+    // Use XBRL quarterly data already in lastRawData
+    const xbrl = lastRawData?.xbrlReports?.quarterly || [];
+    if (xbrl.length < 4) {
+      buildPELineChart([], [], null);
+      return;
+    }
+
+    // Build TTM EPS by quarter
+    function getEPS(report) {
+      const items = report.report?.ic || [];
+      for (const concept of ['EarningsPerShareBasic','EarningsPerShareDiluted','us-gaap_EarningsPerShareDiluted','us-gaap_EarningsPerShareBasic']) {
+        const found = items.find(i => i.concept === concept);
+        if (found && found.value != null) return found.value;
+      }
+      // fallback: net income / shares
+      return null;
+    }
+
+    // Get FMP price history (already cached from price chart load)
+    const { key, base } = APIS.fmp;
+    const priceData = await apiFetch(`${base}/stable/historical-price-eod/light?symbol=${ticker}&limit=730&apikey=${key}`);
+    if (!Array.isArray(priceData) || !priceData.length) { buildPELineChart([], [], null); return; }
+
+    // Build a price lookup map by date
+    const priceMap = {};
+    priceData.forEach(d => { priceMap[d.date] = d.close ?? d.price ?? d.adjClose; });
+
+    // For each quarter end date, compute TTM EPS = sum of last 4 quarters' EPS
+    const quarters = xbrl.slice(); // already sorted oldest→newest
+    const labels = [], pts = [];
+
+    for (let i = 3; i < quarters.length; i++) {
+      const window4 = quarters.slice(i-3, i+1);
+      const epsList = window4.map(q => getEPS(q));
+      if (epsList.some(e => e == null)) continue;
+      const ttmEPS = epsList.reduce((a,b) => a+b, 0);
+      if (ttmEPS <= 0) continue;
+
+      const endDate = quarters[i].endDate || quarters[i].period;
+      if (!endDate) continue;
+
+      // Find closest price on or after that date (within 10 trading days)
+      let price = null;
+      for (let offset = 0; offset <= 10; offset++) {
+        const d = new Date(endDate);
+        d.setDate(d.getDate() + offset);
+        const ds = d.toISOString().slice(0,10);
+        if (priceMap[ds] != null) { price = priceMap[ds]; break; }
+      }
+      if (!price) continue;
+
+      const pe = price / ttmEPS;
+      if (pe > 0 && pe < 500) {
+        labels.push(endDate.slice(0,10));
+        pts.push(parseFloat(pe.toFixed(1)));
+      }
+    }
+
+    buildPELineChart(labels, pts, 'Computed · quarterly TTM');
+  } catch(e) {
+    console.warn('Computed P/E error:', e.message);
+    buildPELineChart([], [], null);
+  }
+}
+
+// Alpha Vantage: compute P/E from quarterly EPS actuals + TIME_SERIES_DAILY price
+async function buildAVPEChart(incomeRaw, earningsRaw) {
+  elShow('peLoading', 'flex');
+  try {
+    // AV earningsRaw.quarterlyEarnings = [{fiscalDateEnding, reportedEPS, ...}] newest first
+    const qEarnings = (earningsRaw?.quarterlyEarnings || []).slice().reverse(); // oldest first
+    if (qEarnings.length < 4) { buildPELineChart([], [], null); return; }
+
+    // Get price history — reuse cached AV time series
+    const { key, base } = APIS.alphavantage;
+    const tsRaw = await apiFetch(`${base}/query?function=TIME_SERIES_DAILY&symbol=${currentTicker}&outputsize=full&apikey=${key}`);
+    const ts = tsRaw?.['Time Series (Daily)'] || {};
+    if (!Object.keys(ts).length) { buildPELineChart([], [], null); return; }
+
+    const labels = [], pts = [];
+
+    for (let i = 3; i < qEarnings.length; i++) {
+      const window4 = qEarnings.slice(i-3, i+1);
+      const epsList = window4.map(q => parseFloat(q.reportedEPS));
+      if (epsList.some(e => isNaN(e))) continue;
+      const ttmEPS = epsList.reduce((a,b) => a+b, 0);
+      if (ttmEPS <= 0) continue;
+
+      const endDate = qEarnings[i].fiscalDateEnding;
+      // Find closest price within 10 trading days after quarter end
+      let price = null;
+      for (let offset = 0; offset <= 10; offset++) {
+        const d = new Date(endDate);
+        d.setDate(d.getDate() + offset);
+        const ds = d.toISOString().slice(0,10);
+        if (ts[ds]) { price = parseFloat(ts[ds]['4. close']); break; }
+      }
+      if (!price) continue;
+
+      const pe = price / ttmEPS;
+      if (pe > 0 && pe < 500) {
+        labels.push(endDate);
+        pts.push(parseFloat(pe.toFixed(1)));
+      }
+    }
+
+    buildPELineChart(labels, pts, 'Computed · quarterly TTM');
+  } catch(e) {
+    console.warn('AV P/E error:', e.message);
+    buildPELineChart([], [], null);
+  }
+}
+
+
 function buildChartsUnavailable(msg) {
-  ['revenueChartWrap','fcfChartWrap','netIncomeChartWrap','epsChartWrap','ebitdaChartWrap'].forEach(id => {
+  ['revenueChartWrap','fcfChartWrap','netIncomeChartWrap','epsChartWrap','ebitdaChartWrap','peChartWrap'].forEach(id => {
     const wrap = document.getElementById(id);
     if (!wrap) return;
     const canvas = wrap.querySelector('canvas');
@@ -1755,7 +2006,7 @@ function showLoading(msg) {
   document.getElementById('priceBadge').style.opacity = '0';
   document.getElementById('priceTrendBadge').textContent = '—';
   setMetricsSkeleton();
-  setSectionLoading(['priceLoading','revenueLoading','fcfLoading','netIncomeLoading','epsLoading','ebitdaLoading']);
+  setSectionLoading(['priceLoading','revenueLoading','fcfLoading','netIncomeLoading','epsLoading','ebitdaLoading','peLoading']);
   // Reset price card to clickable state (in case previous search was Finnhub)
   const pc = document.getElementById('priceCard');
   if (pc) { pc.onclick = () => openChartModal('Price','priceChart'); pc.style.cursor = ''; }
@@ -1763,14 +2014,14 @@ function showLoading(msg) {
   if (eb) eb.style.display = '';
   // Clear quote-card and hide canvases
   document.getElementById('priceChartWrap')?.querySelectorAll('.quote-card,.chart-locked').forEach(el=>el.remove());
-  ['priceChart','revenueChart','fcfChart','netIncomeChart','epsChart','ebitdaChart'].forEach(id => {
+  ['priceChart','revenueChart','fcfChart','netIncomeChart','epsChart','ebitdaChart','peChart'].forEach(id => {
     const c = document.getElementById(id); if (c) c.style.display = 'none';
   });
   // Clear locked messages
   document.querySelectorAll('.chart-locked').forEach(el => el.remove());
 }
 function hideLoading() {
-  clearSectionLoading(['priceLoading','revenueLoading','fcfLoading','netIncomeLoading','epsLoading','ebitdaLoading']);
+  clearSectionLoading(['priceLoading','revenueLoading','fcfLoading','netIncomeLoading','epsLoading','ebitdaLoading','peLoading']);
   document.getElementById('loadingOverlay').classList.add('hidden');
 }
 function showError(msg){const b=document.getElementById('errorBanner');b.textContent=msg;b.style.display='block';}
@@ -1819,6 +2070,37 @@ function openChartModal(title, sourceCanvasId) {
     const cfg = sourceChart.config;
     const newOptions = JSON.parse(JSON.stringify(cfg.options || {}));
 
+    // Detect chart type by canvas ID to pick the right formatters
+    const isPE    = sourceCanvasId === 'peChart';
+    const isPrice = sourceCanvasId === 'priceChart';
+
+    const fmtAxisY = isPE
+      ? v => v.toFixed(0) + 'x'
+      : isPrice
+        ? v => '$' + v.toFixed(0)
+        : v => {
+            if (Math.abs(v) >= 1e12) return '$' + (v/1e12).toFixed(1) + 'T';
+            if (Math.abs(v) >= 1e9)  return '$' + (v/1e9).toFixed(1) + 'B';
+            if (Math.abs(v) >= 1e6)  return '$' + (v/1e6).toFixed(1) + 'M';
+            if (Math.abs(v) >= 1e3)  return '$' + (v/1e3).toFixed(0) + 'K';
+            return '$' + v.toFixed(2);
+          };
+
+    const fmtTooltip = isPE
+      ? ctx => {
+          const v = ctx.parsed.y;
+          const label = ctx.dataset.label || '';
+          return label ? label.startsWith('Avg') ? 'Avg: ' + v.toFixed(1) + 'x' : 'P/E: ' + v.toFixed(1) + 'x' : v.toFixed(1) + 'x';
+        }
+      : isPrice
+        ? ctx => '$' + ctx.parsed.y.toFixed(2)
+        : ctx => {
+            const v = ctx.parsed.y;
+            if (Math.abs(v) >= 1e9)  return '$' + (v/1e9).toFixed(2) + 'B';
+            if (Math.abs(v) >= 1e6)  return '$' + (v/1e6).toFixed(2) + 'M';
+            return '$' + v.toFixed(2);
+          };
+
     // Enable axes
     newOptions.scales = newOptions.scales || {};
     newOptions.scales.x = {
@@ -1829,19 +2111,13 @@ function openChartModal(title, sourceCanvasId) {
     newOptions.scales.y = {
       display: true,
       grid: { color: 'rgba(0,0,0,0.06)' },
-      ticks: {
-        font: { size: 11, family: 'Inter' }, color: '#6b7280',
-        callback: v => {
-          if (Math.abs(v) >= 1e12) return '$' + (v/1e12).toFixed(1) + 'T';
-          if (Math.abs(v) >= 1e9)  return '$' + (v/1e9).toFixed(1) + 'B';
-          if (Math.abs(v) >= 1e6)  return '$' + (v/1e6).toFixed(1) + 'M';
-          if (Math.abs(v) >= 1e3)  return '$' + (v/1e3).toFixed(0) + 'K';
-          return '$' + v.toFixed(2);
-        }
-      }
+      ticks: { font: { size: 11, family: 'Inter' }, color: '#6b7280', callback: fmtAxisY }
     };
     newOptions.plugins = newOptions.plugins || {};
-    newOptions.plugins.legend = { display: false };
+    // Show legend for P/E (avg line) but hide for everything else
+    newOptions.plugins.legend = isPE
+      ? { display: true, position: 'top', labels: { font: { size: 11, family: 'Inter' }, color: '#6b7280', boxWidth: 12, padding: 12 } }
+      : { display: false };
     newOptions.plugins.tooltip = {
       backgroundColor: '#fff',
       borderColor: '#e1e4e8',
@@ -1849,14 +2125,8 @@ function openChartModal(title, sourceCanvasId) {
       titleColor: '#111827',
       bodyColor: '#6b7280',
       padding: 10,
-      callbacks: {
-        label: ctx => {
-          const v = ctx.parsed.y;
-          if (Math.abs(v) >= 1e9)  return '$' + (v/1e9).toFixed(2) + 'B';
-          if (Math.abs(v) >= 1e6)  return '$' + (v/1e6).toFixed(2) + 'M';
-          return '$' + v.toFixed(2);
-        }
-      }
+      displayColors: isPE,
+      callbacks: { label: fmtTooltip }
     };
     newOptions.maintainAspectRatio = false;
     newOptions.responsive = true;
