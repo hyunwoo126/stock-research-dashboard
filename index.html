@@ -467,6 +467,7 @@ const elShow = (id, d='block') => { const e = document.getElementById(id); if (e
 const elHide = id => { const e = document.getElementById(id); if (e) e.style.display = 'none'; };
 
 
+
 // ── HELPERS ──
 function fmt(n, d=1) {
   if (n == null || isNaN(n)) return '—';
@@ -484,8 +485,12 @@ let forceRefresh = false;
 let staleFallbackUsed = false;
 
 function cacheKey(url) {
-  // Strip API keys from cache key so key rotation doesn't bust cache
-  return 'qcache_' + url.replace(/(&?apikey|&?token)=[^&]*/gi, '');
+  // Strip API keys, then clean up any leftover stray & or ? at end or doubled &&
+  return 'qcache_' + url
+    .replace(/(&?apikey|&?token)=[^&]*/gi, '')
+    .replace(/[&?]+$/g, '')
+    .replace(/&&+/g, '&')
+    .replace(/\?&/g, '?');
 }
 
 function cacheGet(url) {
@@ -518,14 +523,16 @@ function clearOldCache() {
       .forEach(({ k }) => localStorage.removeItem(k));
 }
 
-// Returns the oldest cached timestamp across all keys for current ticker
+// Returns the oldest cached timestamp for current ticker + active API
 function getTickerCacheTime(ticker) {
   const prefix = 'qcache_';
+  const apiBase = APIS[activeApi].base.replace('https://', '').replace('http://', '');
   let oldest = null;
   for (let i = 0; i < localStorage.length; i++) {
     const k = localStorage.key(i);
     if (!k || !k.startsWith(prefix)) continue;
     if (!k.toLowerCase().includes(ticker.toLowerCase())) continue;
+    if (!k.includes(apiBase)) continue;
     try {
       const { ts } = JSON.parse(localStorage.getItem(k));
       if (oldest === null || ts < oldest) oldest = ts;
@@ -608,24 +615,24 @@ function onApiChange() {
   if (currentTicker) loadTicker();
 }
 
-// ── INDEX QUOTES (always FMP) ──
+// ── INDEX QUOTES (Finnhub free — supports major indices) ──
 async function loadIndices() {
   try {
-    const { key, base } = APIS.fmp;
+    const { key, base } = APIS.finnhub;
     const [dow, sp, nas] = await Promise.all([
-      apiFetch(base+'/stable/quote?symbol=DIA&apikey='+key),
-      apiFetch(base+'/stable/quote?symbol=SPY&apikey='+key),
-      apiFetch(base+'/stable/quote?symbol=QQQ&apikey='+key),
+      apiFetch(`${base}/quote?symbol=^DJI&token=${key}`),
+      apiFetch(`${base}/quote?symbol=^GSPC&token=${key}`),
+      apiFetch(`${base}/quote?symbol=^IXIC&token=${key}`),
     ]);
-    setIdx('idxDow', dow?.[0]);
-    setIdx('idxSP', sp?.[0]);
-    setIdx('idxNas', nas?.[0]);
+    setIdx('idxDow', dow);
+    setIdx('idxSP',  sp);
+    setIdx('idxNas', nas);
   } catch(e) {}
 }
 function setIdx(id, q) {
-  if (!q) return;
+  if (!q || q.dp == null) return;
   const el = document.getElementById(id);
-  const chg = q.changePercentage ?? 0;
+  const chg = q.dp; // Finnhub: dp = percent change
   const up = chg >= 0;
   el.textContent = (up?'+':'')+chg.toFixed(2)+'%';
   el.className = 'idx-chg '+(up?'idx-up':'idx-dn');
@@ -1474,6 +1481,37 @@ function buildPriceCardFinnhub(quote) {
   wrap.appendChild(div);
 }
 
+// ── CROSSHAIR PLUGIN ──
+const crosshairPlugin = {
+  id: 'crosshair',
+  afterDraw(chart) {
+    if (!chart._crosshairX) return;
+    const { ctx, chartArea: { top, bottom } } = chart;
+    ctx.save();
+    ctx.beginPath();
+    ctx.moveTo(chart._crosshairX, top);
+    ctx.lineTo(chart._crosshairX, bottom);
+    ctx.lineWidth = 1;
+    ctx.strokeStyle = 'rgba(107,114,128,0.45)';
+    ctx.setLineDash([4, 3]);
+    ctx.stroke();
+    ctx.restore();
+  },
+  afterEvent(chart, args) {
+    const { event: evt } = args;
+    if (!chart.chartArea) return;
+    if (evt.type === 'mousemove') {
+      const x = evt.x;
+      chart._crosshairX = (x >= chart.chartArea.left && x <= chart.chartArea.right) ? x : null;
+    } else if (evt.type === 'mouseout') {
+      chart._crosshairX = null;
+    }
+    chart.draw();
+  }
+};
+Chart.register(crosshairPlugin);
+
+
 // ══════════════════════════════════════════
 // SHARED PRICE CHART RENDERER
 // All APIs that have price history call this after fetching their own data.
@@ -1505,12 +1543,14 @@ function buildPriceLineChart(labels, pts) {
   const color = up ? '#1a7f37' : '#cf222e';
   priceChartInst = new Chart(canvas, {
     type: 'line',
-    data: { labels, datasets: [{ data: pts, borderColor: color, backgroundColor: up?'rgba(26,127,55,0.08)':'rgba(207,34,46,0.08)', fill: true, tension: 0.35, pointRadius: 0, borderWidth: 1.5 }] },
+    data: { labels, datasets: [{ data: pts, borderColor: color, backgroundColor: up?'rgba(26,127,55,0.08)':'rgba(207,34,46,0.08)', fill: true, tension: 0.35, pointRadius: 0, pointHoverRadius: 4, pointHoverBackgroundColor: color, borderWidth: 1.5 }] },
     options: {
       responsive: true, maintainAspectRatio: false,
+      interaction: { mode: 'index', intersect: false },
       plugins: { legend: { display: false }, tooltip: {
         backgroundColor: '#fff', borderColor: '#e1e4e8', borderWidth: 1,
         titleColor: '#111827', bodyColor: '#6b7280', padding: 8,
+        displayColors: false,
         callbacks: { label: ctx => '$'+ctx.parsed.y.toFixed(2) }
       }},
       scales: {
