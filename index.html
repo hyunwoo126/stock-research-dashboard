@@ -87,6 +87,7 @@
   .cache-dot.live { background: var(--blue); }
   .search-btn:hover { opacity: 0.88; }
   .company-hero { display: flex; flex-direction: column; align-items: center; gap: 4px; }
+  .company-name-row { display: flex; align-items: center; gap: 10px; }
   .company-name { font-size: 22px; font-weight: 600; color: var(--text); }
   .company-sub { font-size: 13px; color: var(--muted); }
   .company-price-row { display: flex; align-items: center; gap: 10px; margin-top: 4px; }
@@ -244,6 +245,7 @@
           <option value="fmp">FMP</option>
           <option value="finnhub">Finnhub</option>
           <option value="alphavantage">Alpha Vantage</option>
+          <option value="twelvedata">Twelve Data</option>
         </select>
         <span style="position:absolute;right:8px;top:50%;transform:translateY(-50%);pointer-events:none;font-size:10px;color:var(--muted)">▾</span>
       </div>
@@ -269,7 +271,10 @@
         </div>
       </div>
       <div class="company-hero">
-        <div class="company-name" id="companyName"><span class="skel" style="width:180px;height:22px"></span></div>
+        <div class="company-name-row">
+          <img id="companyLogo" src="" alt="" style="display:none;width:28px;height:28px;border-radius:6px;object-fit:contain;flex-shrink:0">
+          <div class="company-name" id="companyName"><span class="skel" style="width:180px;height:22px"></span></div>
+        </div>
         <div class="company-sub" id="companySub"><span class="skel" style="width:100px;height:14px;margin-top:4px"></span></div>
         <div class="company-price-row">
           <span class="company-price" id="companyPrice"><span class="skel" style="width:90px;height:28px"></span></span>
@@ -440,6 +445,11 @@ const APIS = {
     key: '0THHQM0NGNWYJTJS',
     base: 'https://www.alphavantage.co',
     label: 'Alpha Vantage'
+  },
+  twelvedata: {
+    key: 'e9a6a6a59ac84a3594853119360f0a48',
+    base: 'https://api.twelvedata.com',
+    label: 'Twelve Data'
   }
 };
 let activeApi = 'fmp';
@@ -447,8 +457,15 @@ let activeApi = 'fmp';
 let priceChartInst;
 let currentPrice = 0;
 let currentTicker = '';
-// Chart instances for financial charts
 let chartInsts = {};
+
+// Cached raw financial data for period switching
+let lastRawData = null; // { api, incomeRaw, cashFlowRaw, earningsRaw, xbrlReports }
+
+// ── DOM HELPERS ──
+const elShow = (id, d='block') => { const e = document.getElementById(id); if (e) e.style.display = d; };
+const elHide = id => { const e = document.getElementById(id); if (e) e.style.display = 'none'; };
+
 
 // ── HELPERS ──
 function fmt(n, d=1) {
@@ -464,6 +481,7 @@ function fmtPct(n, d=2) { return n == null || isNaN(n) ? '—' : n.toFixed(d)+'%
 
 const CACHE_TTL = 24 * 60 * 60 * 1000; // 24 hours
 let forceRefresh = false;
+let staleFallbackUsed = false;
 
 function cacheKey(url) {
   // Strip API keys from cache key so key rotation doesn't bust cache
@@ -516,19 +534,25 @@ function getTickerCacheTime(ticker) {
   return oldest;
 }
 
-function updateCacheStatus(ticker, fromCache) {
+function updateCacheStatus(ticker, fromCache, wasForceRefresh = false) {
   const el = document.getElementById('cacheStatus');
   if (!el || !ticker) { if(el) el.innerHTML=''; return; }
+  const ts = getTickerCacheTime(ticker);
+  const age = ts ? Date.now() - ts : null;
+  const mins = age ? Math.floor(age / 60000) : 0;
+  const hrs  = age ? Math.floor(age / 3600000) : 0;
+  const label = age ? (hrs >= 1 ? `${hrs}h ${mins % 60}m ago` : `${mins}m ago`) : '';
+
+  if (wasForceRefresh && fromCache) {
+    // Tried to refresh but API failed — showing stale cache
+    el.innerHTML = `<span class="cache-dot" style="background:var(--gold)"></span><span style="color:var(--gold)">API unavailable · showing cached data${label ? ' from ' + label : ''}</span>`;
+    return;
+  }
   if (!fromCache) {
     el.innerHTML = `<span class="cache-dot live"></span>Live data fetched just now`;
     return;
   }
-  const ts = getTickerCacheTime(ticker);
   if (!ts) { el.innerHTML = ''; return; }
-  const age = Date.now() - ts;
-  const mins = Math.floor(age / 60000);
-  const hrs  = Math.floor(age / 3600000);
-  const label = hrs >= 1 ? `${hrs}h ${mins % 60}m ago` : `${mins}m ago`;
   el.innerHTML = `<span class="cache-dot fresh"></span>Cached · ${label}`;
 }
 
@@ -536,19 +560,33 @@ async function apiFetch(url) {
   const hit = cacheGet(url);
   if (hit) return hit.data;
 
-  const res = await fetch(url);
-  if (!res.ok) {
-    let msg = 'HTTP ' + res.status;
-    try {
-      const body = await res.json();
-      if (body && (body.message || body.error || body['Error Message']))
-        msg += ' — ' + (body.message || body.error || body['Error Message']);
-    } catch(e) {}
-    throw new Error(msg);
+  try {
+    const res = await fetch(url);
+    if (!res.ok) {
+      let msg = 'HTTP ' + res.status;
+      try {
+        const body = await res.json();
+        if (body && (body.message || body.error || body['Error Message']))
+          msg += ' — ' + (body.message || body.error || body['Error Message']);
+      } catch(e) {}
+      throw new Error(msg);
+    }
+    const data = await res.json();
+    cacheSet(url, data);
+    return data;
+  } catch(e) {
+    // If we bypassed cache due to forceRefresh, fall back to stale cache rather than failing hard
+    if (forceRefresh) {
+      try {
+        const raw = localStorage.getItem(cacheKey(url));
+        if (raw) {
+          const { data } = JSON.parse(raw);
+          if (data) { console.warn('API fetch failed, using stale cache for:', url); staleFallbackUsed = true; return data; }
+        }
+      } catch(cacheErr) {}
+    }
+    throw e;
   }
-  const data = await res.json();
-  cacheSet(url, data);
-  return data;
 }
 
 async function refreshTicker() {
@@ -599,12 +637,17 @@ async function loadTicker() {
   if (!ticker) return;
   showLoading('Loading '+ticker+' via '+APIS[activeApi].label+'…');
   hideError();
+  lastRawData = null;
+  // Reset period toggle to Annually
+  document.querySelectorAll('.period-btn').forEach((b, i) => b.classList.toggle('active', i === 2));
 
   // Check if data is already cached before fetching (to show status after)
   const sampleUrl = activeApi === 'fmp'
     ? `${APIS.fmp.base}/stable/profile?symbol=${ticker}&apikey=${APIS.fmp.key}`
     : activeApi === 'alphavantage'
     ? `${APIS.alphavantage.base}/query?function=OVERVIEW&symbol=${ticker}&apikey=${APIS.alphavantage.key}`
+    : activeApi === 'twelvedata'
+    ? `${APIS.twelvedata.base}/quote?symbol=${ticker}&apikey=${APIS.twelvedata.key}`
     : `${APIS.finnhub.base}/stock/profile2?symbol=${ticker}&token=${APIS.finnhub.key}`;
   const wasCached = !forceRefresh && cacheGet(sampleUrl) !== null;
 
@@ -619,10 +662,15 @@ async function loadTicker() {
       await loadTickerFMP(ticker);
     } else if (activeApi === 'alphavantage') {
       await loadTickerAlphaVantage(ticker);
+    } else if (activeApi === 'twelvedata') {
+      await loadTickerTwelveData(ticker);
     } else {
       await loadTickerFinnhub(ticker);
     }
-    updateCacheStatus(ticker, wasCached);
+    // After load: check if we served stale cache during a forced refresh
+    const servedStale = forceRefresh && staleFallbackUsed;
+    updateCacheStatus(ticker, wasCached || servedStale, servedStale);
+    staleFallbackUsed = false;
   } catch(e) {
     showError(e.message || 'Failed to load data.');
     document.getElementById('cacheStatus').innerHTML = '';
@@ -649,7 +697,8 @@ async function loadTickerFMP(ticker) {
   currentPrice = q.price || p.price || 0;
 
   // Header
-  setHeader(p.companyName || ticker, ticker+' | '+(p.exchangeShortName||'—'), currentPrice, q.changePercentage, q.change);
+  const fmpLogo = `https://financialmodelingprep.com/image-stock/${ticker}.png?apikey=${key}`;
+  setHeader(p.companyName || ticker, ticker+' | '+(p.exchangeShortName||'—'), currentPrice, q.changePercentage, q.change, fmpLogo);
 
   // Metrics
   const mktCap = q.marketCap || p.mktCap || null;
@@ -675,10 +724,7 @@ async function loadTickerFMP(ticker) {
     payout: m.payoutRatioTTM
   });
 
-  document.getElementById('dcfFcf').value = fcfTTM ? (fcfTTM/1e9).toFixed(1) : 0;
-  document.getElementById('dcfSh').value = sharesB.toFixed(2);
-  document.getElementById('dcfTicker').textContent = ticker;
-  calcDCF();
+  setDCF(fcfTTM ? fcfTTM/1e9 : 0, sharesB, ticker);
 
   buildChartsUnavailable('Historical financials require an FMP paid plan ($19/mo)');
   buildEarnings(earnings, ticker);
@@ -710,7 +756,7 @@ async function loadTickerFinnhub(ticker) {
   const chgAmt = quote.d ?? null;
   const chgPct = quote.dp ?? null;
 
-  setHeader(profile.name || ticker, ticker+' | '+(profile.exchange||'—'), currentPrice, chgPct, chgAmt);
+  setHeader(profile.name || ticker, ticker+' | '+(profile.exchange||'—'), currentPrice, chgPct, chgAmt, profile.logo || null);
 
   const m = metrics.metric || {};
   const mktCap = profile.marketCapitalization ? profile.marketCapitalization * 1e6 : null;
@@ -726,25 +772,23 @@ async function loadTickerFinnhub(ticker) {
     fcfYield: m['fcfYieldTTM'] ? m['fcfYieldTTM'] * 100 : null,
     fcfPerSh: m['freeCashFlowTTMPerShare'],
     sbc: null,
-    margin: m['netProfitMarginTTM'] != null ? m['netProfitMarginTTM'] / 100 : null,
-    opMargin: m['operatingMarginTTM'] != null ? m['operatingMarginTTM'] / 100 : null,
+    // Finnhub metric values are already percentages — divide by 100 to normalise to 0-1 decimal for setMetrics
+    margin:   m['netProfitMarginTTM']  != null ? m['netProfitMarginTTM']  / 100 : null,
+    opMargin: m['operatingMarginTTM']  != null ? m['operatingMarginTTM']  / 100 : null,
     revTTM: m['revenuePerShareTTM'] && sharesB ? m['revenuePerShareTTM'] * sharesB * 1e9 : null,
     eps: m['epsTTM'],
-    roe: m['roeTTM'] != null ? m['roeTTM'] / 100 : null,
+    roe:   m['roeTTM']           != null ? m['roeTTM']           / 100 : null,
     cash: m['totalCashPerSharePerAnnual'] && sharesB ? m['totalCashPerSharePerAnnual'] * sharesB * 1e9 : null,
     debt: null,
     de: m['totalDebtToEquityAnnual'],
-    divAmt: m['dividendsPerShareAnnual'],
-    divYield: m['dividendYieldIndicatedAnnual'],
-    payout: m['payoutRatioAnnual'] != null ? m['payoutRatioAnnual'] / 100 : null,
+    divAmt:   m['dividendsPerShareAnnual'],
+    divYield: m['dividendYieldIndicatedAnnual'] != null ? m['dividendYieldIndicatedAnnual'] * 100 : null,
+    payout:   m['payoutRatioAnnual']   != null ? m['payoutRatioAnnual']   / 100 : null,
   });
 
   // DCF
   const fcfForDcf = m['freeCashFlowTTMPerShare'] && sharesB ? m['freeCashFlowTTMPerShare'] * sharesB : 0;
-  document.getElementById('dcfFcf').value = fcfForDcf.toFixed(1);
-  document.getElementById('dcfSh').value = sharesB.toFixed(2);
-  document.getElementById('dcfTicker').textContent = ticker;
-  calcDCF();
+  setDCF(fcfForDcf, sharesB, ticker);
 
   // Financial charts — Finnhub has free basic financials
   await buildFinnhubCharts(ticker);
@@ -766,7 +810,7 @@ async function loadTickerAlphaVantage(ticker) {
   const { key, base } = APIS.alphavantage;
   const av = (fn, extra='') => `${base}/query?function=${fn}&symbol=${ticker}&apikey=${key}${extra}`;
 
-  // Fetch in parallel: overview + quote + income statement + cash flow + earnings
+  // 5 requests — income/cashflow annuals derived from quarterly data at chart-build time
   const [overview, quoteRaw, incomeRaw, cashFlowRaw, earningsRaw] = await Promise.all([
     apiFetch(av('OVERVIEW')),
     apiFetch(av('GLOBAL_QUOTE')),
@@ -787,11 +831,22 @@ async function loadTickerAlphaVantage(ticker) {
 
   // ── Quote ──
   const q = quoteRaw?.['Global Quote'] || {};
-  currentPrice = parseFloat(q['05. price']) || 0;
-  const chgAmt = parseFloat(q['09. change']) || 0;
-  const chgPct = parseFloat(q['10. change percent']?.replace('%','')) || 0;
+  const _pf = v => { if (v == null || v === '' || v === 'None') return null; const n = parseFloat(String(v).replace('%','')); return isNaN(n) ? null : n; };
 
-  setHeader(overview.Name || ticker, `${ticker} | ${overview.Exchange || '—'}`, currentPrice, chgPct, chgAmt);
+  currentPrice = _pf(q['05. price']) ?? _pf(overview.Price) ?? 0;
+
+  // Prefer GLOBAL_QUOTE change fields; fall back to OVERVIEW PreviousClose (works on weekends)
+  let chgAmt = _pf(q['09. change']);
+  let chgPct = _pf(q['10. change percent']);
+  if ((chgAmt == null || chgPct == null) && currentPrice) {
+    const prevClose = _pf(overview.PreviousClose);
+    if (prevClose && prevClose !== 0) {
+      chgAmt = currentPrice - prevClose;
+      chgPct = (chgAmt / prevClose) * 100;
+    }
+  }
+
+  setHeader(overview.Name || ticker, `${ticker} | ${overview.Exchange || '—'}`, currentPrice, chgPct, chgAmt, null);
 
   // ── Metrics from OVERVIEW ──
   const ov = overview;
@@ -810,22 +865,19 @@ async function loadTickerAlphaVantage(ticker) {
   const divYield   = safe(ov.DividendYield) ? safe(ov.DividendYield) * 100 : null;
   const divAmt     = safe(ov.DividendPerShare);
   const sharesB    = safe(ov.SharesOutstanding) ? safe(ov.SharesOutstanding) / 1e9 : 0;
-  const beta       = safe(ov.Beta);
-  const week52H    = safe(ov['52WeekHigh']);
-  const week52L    = safe(ov['52WeekLow']);
 
-  // Derive FCF from most recent annual cash flow report
-  let fcfTTM = null, cash = null, debt = null;
-  const cfAnnual = cashFlowRaw?.annualReports?.[0];
-  if (cfAnnual) {
-    const opCF = safe(cfAnnual.operatingCashflow);
-    const capex = safe(cfAnnual.capitalExpenditures);
-    if (opCF != null && capex != null) fcfTTM = opCF - Math.abs(capex);
-    cash = safe(cfAnnual.cashAndCashEquivalentsAtCarryingValue) ??
-           safe(cfAnnual.cashAndShortTermInvestments);
+  // ── Derive FCF TTM from the 4 most recent quarterly cash flow reports ──
+  const cfQ = (cashFlowRaw?.quarterlyReports || []).slice(0, 4);
+  let fcfTTM = null, cash = null;
+  if (cfQ.length === 4) {
+    const opCFs  = cfQ.map(r => safe(r.operatingCashflow));
+    const capexs = cfQ.map(r => safe(r.capitalExpenditures));
+    if (opCFs.every(v => v != null) && capexs.every(v => v != null)) {
+      fcfTTM = opCFs.reduce((a,b) => a+b, 0) - Math.abs(capexs.reduce((a,b) => a+b, 0));
+    }
+    cash = safe(cfQ[0]?.cashAndCashEquivalentsAtCarryingValue) ??
+           safe(cfQ[0]?.cashAndShortTermInvestments);
   }
-  // Debt from income statement if missing
-  const icAnnual = incomeRaw?.annualReports?.[0];
 
   const fcfYield   = (fcfTTM && mktCap) ? (fcfTTM / mktCap) * 100 : null;
   const fcfPerSh   = (fcfTTM && sharesB) ? fcfTTM / (sharesB * 1e9) : null;
@@ -841,13 +893,11 @@ async function loadTickerAlphaVantage(ticker) {
   });
 
   // DCF
-  document.getElementById('dcfFcf').value = fcfTTM ? (fcfTTM / 1e9).toFixed(1) : 0;
-  document.getElementById('dcfSh').value = sharesB.toFixed(2);
-  document.getElementById('dcfTicker').textContent = ticker;
-  calcDCF();
+  setDCF(fcfTTM ? fcfTTM/1e9 : 0, sharesB, ticker);
 
   // ── Financial Charts (from annual reports) ──
-  buildAlphaVantageCharts(incomeRaw, cashFlowRaw, earningsRaw);
+  buildAlphaVantageCharts(incomeRaw, cashFlowRaw, earningsRaw, 'Annually');
+  lastRawData = { api: 'alphavantage', incomeRaw, cashFlowRaw, earningsRaw };
 
   // ── Price Chart from TIME_SERIES_DAILY (free, last 100 days) ──
   await buildPriceChartAV(ticker);
@@ -859,61 +909,96 @@ async function loadTickerAlphaVantage(ticker) {
   buildProfileAV(ov, ticker);
 }
 
-function buildAlphaVantageCharts(incomeRaw, cashFlowRaw, earningsRaw) {
-  // Alpha Vantage returns up to 5 years of annual data
-  const income  = (incomeRaw?.annualReports  || []).slice(0,5).reverse();
-  const cashFlow = (cashFlowRaw?.annualReports || []).slice(0,5).reverse();
-  const eps_q   = (earningsRaw?.annualEarnings || []).slice(0,5).reverse();
+// ══════════════════════════════════════════
+// SHARED FINANCIAL CHART HELPERS
+// Used by both AV and Finnhub chart builders
+// ══════════════════════════════════════════
 
-  const safe = (v) => { const n = parseFloat(v); return isNaN(n) ? null : n; };
+// Roll a 4-quarter TTM window over an array of values
+function toTTMWindow(vals) {
+  return vals.map((_, i) => {
+    if (i < 3) return null;
+    const w = [vals[i-3], vals[i-2], vals[i-1], vals[i]];
+    return w.every(v => v != null) ? w.reduce((a,b) => a+b, 0) : null;
+  });
+}
 
-  if (!income.length) {
-    buildChartsUnavailable('No financial data returned — check your Alpha Vantage API key');
-    return;
+// Group quarterly records by fiscal year and sum — returns [{yr, val}]
+function toAnnualGroups(quarters, accessor) {
+  const safe = v => { const n = parseFloat(v); return isNaN(n) ? null : n; };
+  const byYear = {};
+  quarters.forEach(r => {
+    const yr = r.fiscalDateEnding?.slice(0, 4);
+    if (!yr) return;
+    if (!byYear[yr]) byYear[yr] = [];
+    byYear[yr].push(safe(accessor(r)));
+  });
+  return Object.entries(byYear)
+    .filter(([, vals]) => vals.length === 4 && vals.every(v => v != null))
+    .sort(([a], [b]) => a.localeCompare(b))
+    .slice(-5)
+    .map(([yr, vals]) => ({ yr, val: vals.reduce((a,b) => a+b, 0) }));
+}
+
+function computeFCF(opCF, capex) {
+  return opCF != null && capex != null ? opCF - Math.abs(capex) : null;
+}
+
+function computeEBITDA(netIncome, tax, interest, dep) {
+  return netIncome != null ? netIncome + (tax||0) + (interest||0) + (dep||0) : null;
+}
+
+function buildAlphaVantageCharts(incomeRaw, cashFlowRaw, earningsRaw, period = 'Annually') {
+  const safe = v => { const n = parseFloat(v); return isNaN(n) ? null : n; };
+  const qLabel = d => { if (!d) return ''; const dt = new Date(d); return `Q${Math.ceil((dt.getMonth()+1)/3)} ${dt.getFullYear()}`; };
+  const incomeQ   = (incomeRaw?.quarterlyReports   || []).slice(0, 20).reverse();
+  const cashFlowQ = (cashFlowRaw?.quarterlyReports  || []).slice(0, 20).reverse();
+  const epsQ      = (earningsRaw?.quarterlyEarnings || []).slice(0, 20).reverse();
+  if (!incomeQ.length) { buildChartsUnavailable('No financial data returned — check your Alpha Vantage API key'); return; }
+
+  // Row-level accessors using shared helpers
+  const avFcfVal    = r => computeFCF(safe(r.operatingCashflow), safe(r.capitalExpenditures));
+  const avEbitdaVal = r => computeEBITDA(safe(r.netIncome), safe(r.incomeTaxExpense), safe(r.interestExpense), safe(r.depreciationAndAmortization));
+
+  if (period === 'Annually') {
+    const rev    = toAnnualGroups(incomeQ,   r => r.totalRevenue);
+    const ni     = toAnnualGroups(incomeQ,   r => r.netIncome);
+    const ebitda = toAnnualGroups(incomeQ,   avEbitdaVal);
+    const fcf    = toAnnualGroups(cashFlowQ, avFcfVal);
+    const epsA   = (earningsRaw?.annualEarnings || []).slice(0, 5).reverse();
+    buildFinancialChart('revenueChart',   'revenueChartWrap',   rev.map(d=>d.yr),    rev.map(d=>d.val),    'Revenue',        '#3b82f6');
+    buildFinancialChart('fcfChart',       'fcfChartWrap',       fcf.map(d=>d.yr),    fcf.map(d=>d.val),    'Free Cash Flow', '#10b981');
+    buildFinancialChart('netIncomeChart', 'netIncomeChartWrap', ni.map(d=>d.yr),     ni.map(d=>d.val),     'Net Income',     '#22c55e');
+    buildFinancialChart('epsChart',       'epsChartWrap',       epsA.map(r=>r.fiscalDateEnding?.slice(0,4)||''), epsA.map(r=>safe(r.reportedEPS)), 'EPS', '#f59e0b', true);
+    buildFinancialChart('ebitdaChart',    'ebitdaChartWrap',    ebitda.map(d=>d.yr), ebitda.map(d=>d.val), 'EBITDA',         '#8b5cf6');
+
+  } else if (period === 'Quarterly') {
+    const labels    = incomeQ.map(r => qLabel(r.fiscalDateEnding));
+    const cfLabels  = cashFlowQ.map(r => qLabel(r.fiscalDateEnding));
+    const epsLabels = epsQ.map(r => qLabel(r.fiscalDateEnding));
+    buildFinancialChart('revenueChart',   'revenueChartWrap',   labels,    incomeQ.map(r=>safe(r.totalRevenue)), 'Revenue',        '#3b82f6');
+    buildFinancialChart('fcfChart',       'fcfChartWrap',       cfLabels,  cashFlowQ.map(avFcfVal),              'Free Cash Flow', '#10b981');
+    buildFinancialChart('netIncomeChart', 'netIncomeChartWrap', labels,    incomeQ.map(r=>safe(r.netIncome)),    'Net Income',     '#22c55e');
+    buildFinancialChart('epsChart',       'epsChartWrap',       epsLabels, epsQ.map(r=>safe(r.reportedEPS)),     'EPS',            '#f59e0b', true);
+    buildFinancialChart('ebitdaChart',    'ebitdaChartWrap',    labels,    incomeQ.map(avEbitdaVal),             'EBITDA',         '#8b5cf6');
+
+  } else if (period === 'Quarterly (TTM)') {
+    if (incomeQ.length < 4) { buildChartsUnavailable('Not enough quarterly data for TTM'); return; }
+    const fn = arr => toTTMWindow(arr).filter(v => v != null);
+    const ttmLabels   = incomeQ.slice(3).map(r => qLabel(r.fiscalDateEnding));
+    const cfTTMLabels = cashFlowQ.slice(3).map(r => qLabel(r.fiscalDateEnding));
+    const epsTTMLabels = epsQ.slice(3).map(r => qLabel(r.fiscalDateEnding));
+    buildFinancialChart('revenueChart',   'revenueChartWrap',   ttmLabels,    fn(incomeQ.map(r=>safe(r.totalRevenue))), 'Revenue TTM',    '#3b82f6');
+    buildFinancialChart('fcfChart',       'fcfChartWrap',       cfTTMLabels,  fn(cashFlowQ.map(avFcfVal)),              'FCF TTM',        '#10b981');
+    buildFinancialChart('netIncomeChart', 'netIncomeChartWrap', ttmLabels,    fn(incomeQ.map(r=>safe(r.netIncome))),    'Net Income TTM', '#22c55e');
+    buildFinancialChart('epsChart',       'epsChartWrap',       epsTTMLabels, fn(epsQ.map(r=>safe(r.reportedEPS))),    'EPS TTM',        '#f59e0b', true);
+    buildFinancialChart('ebitdaChart',    'ebitdaChartWrap',    ttmLabels,    fn(incomeQ.map(avEbitdaVal)),             'EBITDA TTM',     '#8b5cf6');
   }
-
-  const labels   = income.map(r => r.fiscalDateEnding?.slice(0,4) || '');
-  const revenues = income.map(r => safe(r.totalRevenue));
-  const netIncs  = income.map(r => safe(r.netIncome));
-  const ebitda   = income.map(r => safe(r.ebitda) ?? (() => {
-    const ni = safe(r.netIncome), tax = safe(r.incomeTaxExpense),
-          int_ = safe(r.interestExpense), dep = safe(r.depreciationAndAmortization);
-    return (ni != null) ? (ni + (tax||0) + (int_||0) + (dep||0)) : null;
-  })());
-
-  // FCF from cash flow
-  const cfLabels = cashFlow.map(r => r.fiscalDateEnding?.slice(0,4) || '');
-  const opCFs  = cashFlow.map(r => safe(r.operatingCashflow));
-  const capexs = cashFlow.map(r => safe(r.capitalExpenditures));
-  const fcfs   = opCFs.map((v, i) => v != null && capexs[i] != null ? v - Math.abs(capexs[i]) : null);
-
-  // EPS from earnings endpoint (more accurate)
-  const epsLabels = eps_q.map(r => r.fiscalDateEnding?.slice(0,4) || '');
-  const epsVals   = eps_q.map(r => safe(r.reportedEPS));
-
-  buildFinancialChart('revenueChart',   'revenueChartWrap',   labels,    revenues, 'Revenue',        '#3b82f6');
-  buildFinancialChart('fcfChart',       'fcfChartWrap',       cfLabels,  fcfs,     'Free Cash Flow', '#10b981');
-  buildFinancialChart('netIncomeChart', 'netIncomeChartWrap', labels,    netIncs,  'Net Income',     '#22c55e');
-  buildFinancialChart('epsChart',       'epsChartWrap',       epsLabels, epsVals,  'EPS',            '#f59e0b', true);
-  buildFinancialChart('ebitdaChart',    'ebitdaChartWrap',    labels,    ebitda,   'EBITDA',         '#8b5cf6');
 }
 
 async function buildPriceChartAV(ticker) {
   const { key, base } = APIS.alphavantage;
-  const canvas = document.getElementById('priceChart');
-  const wrap = canvas.parentElement;
-  if (priceChartInst) { priceChartInst.destroy(); priceChartInst = null; }
-  wrap.querySelectorAll('.chart-locked, .quote-card').forEach(el => el.remove());
-  const loadEl = document.getElementById('priceLoading');
-  if (loadEl) loadEl.style.display = 'flex';
-  canvas.style.display = 'none';
-
-  // Re-enable card click (in case previous search was Finnhub)
-  const card = document.getElementById('priceCard');
-  if (card) { card.onclick = () => openChartModal('Price','priceChart'); card.style.cursor = ''; }
-  const expBtn = document.getElementById('priceExpandBtn');
-  if (expBtn) expBtn.style.display = '';
-
+  elShow('priceLoading'); elHide('priceChart');
   let pts = [], labels = [];
   try {
     const data = await apiFetch(`${base}/query?function=TIME_SERIES_DAILY&symbol=${ticker}&outputsize=compact&apikey=${key}`);
@@ -924,69 +1009,28 @@ async function buildPriceChartAV(ticker) {
       pts    = entries.map(([, v]) => parseFloat(v['4. close']));
     }
   } catch(e) { console.warn('AV price history:', e.message); }
-
-  if (loadEl) loadEl.style.display = 'none';
-
-  if (!pts.length) {
-    canvas.style.display = 'none';
-    const msg = document.createElement('div');
-    msg.className = 'chart-locked';
-    msg.innerHTML = '<div class="chart-locked-icon">📊</div><div class="chart-locked-text">Price history unavailable</div>';
-    wrap.appendChild(msg);
-    return;
-  }
-
-  canvas.style.display = '';
-  const up = pts[pts.length-1] >= pts[0];
-  const color = up ? '#1a7f37' : '#cf222e';
-  priceChartInst = new Chart(canvas, {
-    type: 'line',
-    data: { labels, datasets: [{ data: pts, borderColor: color, backgroundColor: up?'rgba(26,127,55,0.08)':'rgba(207,34,46,0.08)', fill: true, tension: 0.35, pointRadius: 0, borderWidth: 1.5 }] },
-    options: {
-      responsive: true, maintainAspectRatio: false,
-      plugins: { legend: { display: false }, tooltip: {
-        backgroundColor: '#fff', borderColor: '#e1e4e8', borderWidth: 1,
-        titleColor: '#111827', bodyColor: '#6b7280', padding: 8,
-        callbacks: { label: ctx => '$'+ctx.parsed.y.toFixed(2) }
-      }},
-      scales: {
-        x: { display: true, grid: { display: false }, ticks: { display: true, maxTicksLimit: 6, font: { size: 10, family: 'Inter' }, color: '#9ca3af', callback: function(val,i){ return labels[i]?labels[i].slice(0,7):''; }}, border: { display: false }},
-        y: { display: true, position: 'right', grid: { color: 'rgba(0,0,0,0.05)' }, border: { display: false }, ticks: { font: { size: 10, family: 'Inter' }, color: '#9ca3af', maxTicksLimit: 4, callback: v => '$'+v.toFixed(0) }}
-      }
-    }
-  });
+  buildPriceLineChart(labels, pts);
 }
 
 function buildEarningsAV(earningsRaw, ticker) {
-  const body = document.getElementById('erBody');
-  body.innerHTML = '';
-  // Update column headers for AV (shows actuals, not estimates)
-  const thead = body.closest('table')?.querySelector('thead tr');
-  if (thead) thead.innerHTML = '<th>Quarter</th><th>Company</th><th class="r">EPS Est.</th><th class="r">Reported EPS</th>';
-  // AV returns quarterly earnings history but not future calendar on free tier
-  // Show most recent quarterly actuals instead
+  // AV shows historical actuals with beat/miss — use custom col4Html for the surprise badge
   const quarterly = (earningsRaw?.quarterlyEarnings || []).slice(0, 8);
-  if (!quarterly.length) {
-    body.innerHTML = '<tr><td colspan="4" style="color:var(--muted);font-size:12px;padding:12px">No earnings data available</td></tr>';
-    return;
-  }
-  quarterly.forEach(e => {
-    const tr = document.createElement('tr');
-    const est  = parseFloat(e.estimatedEPS);
-    const act  = parseFloat(e.reportedEPS);
-    const epsEst = !isNaN(est) ? '$'+est.toFixed(2) : '—';
-    const surprise = (!isNaN(act) && !isNaN(est)) ? ((act - est) / Math.abs(est) * 100).toFixed(1) : null;
+  const rows = quarterly.map(e => {
+    const est = parseFloat(e.estimatedEPS);
+    const act = parseFloat(e.reportedEPS);
+    const surprise = (!isNaN(act) && !isNaN(est) && est !== 0) ? ((act - est) / Math.abs(est) * 100).toFixed(1) : null;
     const surpriseHtml = surprise != null
       ? `<span style="font-size:10px;padding:1px 5px;border-radius:3px;margin-left:4px;background:${parseFloat(surprise)>=0?'rgba(26,127,55,0.1)':'rgba(207,34,46,0.1)'};color:${parseFloat(surprise)>=0?'var(--green)':'var(--red)'}">${parseFloat(surprise)>=0?'+':''}${surprise}%</span>`
       : '';
-    tr.innerHTML = `
-      <td style="font-size:12px;color:var(--muted);white-space:nowrap">${e.fiscalDateEnding||'—'}</td>
-      <td><span class="t-sym" style="color:var(--blue)">${ticker}</span></td>
-      <td class="t-num">${epsEst}</td>
-      <td class="t-num">${!isNaN(act) ? '<span style="font-weight:600">$'+act.toFixed(2)+'</span>'+surpriseHtml : '—'}</td>
-    `;
-    body.appendChild(tr);
+    return {
+      date: e.fiscalDateEnding,
+      symbol: ticker,
+      isCurrent: true,
+      col3Html: !isNaN(est) ? '$'+est.toFixed(2) : '—',
+      col4Html: !isNaN(act) ? '<span style="font-weight:600">$'+act.toFixed(2)+'</span>'+surpriseHtml : '—',
+    };
   });
+  buildEarningsTable(rows, 'EPS Est.', 'Reported EPS', 'No earnings data available');
 }
 
 function buildProfileAV(ov, ticker) {
@@ -1022,94 +1066,229 @@ function buildProfileAV(ov, ticker) {
 }
 
 
+// /stock/financials requires Finnhub premium — go straight to free XBRL endpoint
 async function buildFinnhubCharts(ticker) {
-  const { key, base } = APIS.finnhub;
-  try {
-    // /stock/financials returns clean standardized annual data — free tier
-    const data = await apiFetch(`${base}/stock/financials?symbol=${ticker}&statement=all&freq=annual&token=${key}`);
-    const series = data.financials || [];
-    // Sort oldest → newest, take last 5 years
-    const reports = [...series].sort((a,b) => (a.period||'').localeCompare(b.period||'')).slice(-5);
-
-    if (!reports.length) {
-      // Fallback: try financials-reported (XBRL)
-      await buildFinnhubChartsXBRL(ticker);
-      return;
-    }
-
-    const labels = reports.map(r => r.period ? r.period.slice(0,4) : '');
-
-    // /stock/financials returns nested { ic: {revenue, netIncome, eps, ebitda}, cf: {operatingCashFlow, capitalExpenditures} }
-    const g = (r, ...keys) => { for (const k of keys) { if (r[k] != null) return r[k]; } return null; };
-
-    const revenues = reports.map(r => g(r, 'revenue', 'totalRevenue'));
-    const netIncs  = reports.map(r => g(r, 'netIncome', 'netIncomeCommonStockholders'));
-    const eps_vals = reports.map(r => g(r, 'eps', 'epsBasic', 'epsDiluted'));
-    const opCF     = reports.map(r => g(r, 'operatingCashflow', 'cashFlowFromOperations'));
-    const capex    = reports.map(r => g(r, 'capitalExpenditures', 'capex'));
-    const fcf      = opCF.map((v, i) => (v != null && capex[i] != null) ? v - Math.abs(capex[i]) : null);
-    const ebitda   = reports.map(r => g(r, 'ebitda', 'ebit'));
-
-    buildFinancialChart('revenueChart',   'revenueChartWrap',   labels, revenues, 'Revenue',        '#3b82f6');
-    buildFinancialChart('fcfChart',       'fcfChartWrap',       labels, fcf,      'Free Cash Flow', '#10b981');
-    buildFinancialChart('netIncomeChart', 'netIncomeChartWrap', labels, netIncs,  'Net Income',     '#22c55e');
-    buildFinancialChart('epsChart',       'epsChartWrap',       labels, eps_vals, 'EPS',            '#f59e0b', true);
-    buildFinancialChart('ebitdaChart',    'ebitdaChartWrap',    labels, ebitda,   'EBITDA',         '#8b5cf6');
-
-  } catch(e) {
-    console.warn('Finnhub /stock/financials error:', e.message, '— trying XBRL fallback');
-    await buildFinnhubChartsXBRL(ticker);
-  }
+  await buildFinnhubChartsXBRL(ticker);
 }
 
-// Fallback: parse XBRL as-reported financials
+// Free tier: parse XBRL as-reported financials
 async function buildFinnhubChartsXBRL(ticker) {
   const { key, base } = APIS.finnhub;
   try {
-    const data = await apiFetch(`${base}/stock/financials-reported?symbol=${ticker}&freq=annual&token=${key}`);
-    const reports = (data.data || []).slice(0, 5).reverse();
+    // Fetch both annual and quarterly
+    const [annualData, quarterlyData] = await Promise.all([
+      apiFetch(`${base}/stock/financials-reported?symbol=${ticker}&freq=annual&token=${key}`),
+      apiFetch(`${base}/stock/financials-reported?symbol=${ticker}&freq=quarterly&token=${key}`).catch(() => ({ data: [] })),
+    ]);
 
-    if (!reports.length) {
+    const annualReports    = (annualData.data    || []).slice(0, 5).reverse();
+    const quarterlyReports = (quarterlyData.data || []).slice(0, 20).reverse();
+
+    if (!annualReports.length) {
       buildChartsUnavailable('No financial data available for this ticker on Finnhub');
       return;
     }
 
-    const labels = reports.map(r => r.year ? String(r.year) : (r.period || '').slice(0,4));
+    lastRawData = { api: 'finnhub', xbrlReports: { annual: annualReports, quarterly: quarterlyReports } };
 
-    function getVal(report, section, ...concepts) {
-      const items = report.report?.[section] || [];
-      for (const concept of concepts) {
-        const found = items.find(i => i.concept === concept || (i.label && i.label.toLowerCase().includes(concept.toLowerCase())));
-        if (found && found.value != null) return found.value;
-      }
-      return null;
-    }
-
-    const revenues = reports.map(r => getVal(r, 'ic', 'Revenues', 'RevenueFromContractWithCustomerExcludingAssessedTax', 'SalesRevenueNet'));
-    const netIncs  = reports.map(r => getVal(r, 'ic', 'NetIncomeLoss', 'ProfitLoss'));
-    const eps_vals = reports.map(r => getVal(r, 'ic', 'EarningsPerShareDiluted', 'EarningsPerShareBasic'));
-    const opCF     = reports.map(r => getVal(r, 'cf', 'NetCashProvidedByUsedInOperatingActivities'));
-    const capex    = reports.map(r => getVal(r, 'cf', 'PaymentsToAcquirePropertyPlantAndEquipment'));
-    const fcf      = opCF.map((v, i) => (v != null && capex[i] != null) ? v - Math.abs(capex[i]) : null);
-    const ebitda   = reports.map(r => {
-      const ni = getVal(r, 'ic', 'NetIncomeLoss');
-      const tax = getVal(r, 'ic', 'IncomeTaxExpenseBenefit');
-      const int_ = getVal(r, 'ic', 'InterestExpense');
-      const dep = getVal(r, 'cf', 'DepreciationDepletionAndAmortization', 'Depreciation');
-      if (ni == null) return null;
-      return ni + (tax||0) + (int_||0) + (dep||0);
-    });
-
-    buildFinancialChart('revenueChart',   'revenueChartWrap',   labels, revenues, 'Revenue',        '#3b82f6');
-    buildFinancialChart('fcfChart',       'fcfChartWrap',       labels, fcf,      'Free Cash Flow', '#10b981');
-    buildFinancialChart('netIncomeChart', 'netIncomeChartWrap', labels, netIncs,  'Net Income',     '#22c55e');
-    buildFinancialChart('epsChart',       'epsChartWrap',       labels, eps_vals, 'EPS',            '#f59e0b', true);
-    buildFinancialChart('ebitdaChart',    'ebitdaChartWrap',    labels, ebitda,   'EBITDA',         '#8b5cf6');
+    // Default to Annually on fresh load
+    buildFinnhubChartsFromData({ annual: annualReports, quarterly: quarterlyReports }, 'Annually');
 
   } catch(e) {
     console.warn('Finnhub XBRL error:', e.message);
     buildChartsUnavailable('Financial data unavailable: ' + e.message);
   }
+}
+
+function buildFinnhubChartsFromData(xbrlReports, period = 'Annually') {
+  function getVal(report, section, ...concepts) {
+    const items = report.report?.[section] || [];
+    for (const concept of concepts) {
+      const found = items.find(i => i.concept === concept || (i.label && i.label.toLowerCase().includes(concept.toLowerCase())));
+      if (found && found.value != null) return found.value;
+    }
+    return null;
+  }
+
+  function extractMetrics(reports) {
+    return reports.map(r => ({
+      label: r.year ? String(r.year) : (r.period || '').slice(0, 4),
+      qLabel: (() => { const d = new Date(r.period||r.startDate||''); return `Q${Math.ceil((d.getMonth()+1)/3)} ${d.getFullYear()}`; })(),
+      revenue: getVal(r, 'ic', 'Revenues', 'RevenueFromContractWithCustomerExcludingAssessedTax', 'SalesRevenueNet'),
+      netIncome: getVal(r, 'ic', 'NetIncomeLoss', 'ProfitLoss'),
+      eps: getVal(r, 'ic', 'EarningsPerShareDiluted', 'EarningsPerShareBasic'),
+      opCF: getVal(r, 'cf', 'NetCashProvidedByUsedInOperatingActivities'),
+      capex: getVal(r, 'cf', 'PaymentsToAcquirePropertyPlantAndEquipment'),
+      tax: getVal(r, 'ic', 'IncomeTaxExpenseBenefit'),
+      interest: getVal(r, 'ic', 'InterestExpense'),
+      dep: getVal(r, 'cf', 'DepreciationDepletionAndAmortization', 'Depreciation'),
+    }));
+  }
+
+  // Use shared module-level helpers: computeFCF, computeEBITDA, toTTMWindow
+  const fhFCF    = m => computeFCF(m.opCF, m.capex);
+  const fhEBITDA = m => computeEBITDA(m.netIncome, m.tax, m.interest, m.dep);
+
+  if (period === 'Annually') {
+    const metrics = extractMetrics(xbrlReports.annual);
+    const labels  = metrics.map(m => m.label);
+    buildFinancialChart('revenueChart',   'revenueChartWrap',   labels, metrics.map(m => m.revenue),   'Revenue',        '#3b82f6');
+    buildFinancialChart('fcfChart',       'fcfChartWrap',       labels, metrics.map(fhFCF),            'Free Cash Flow', '#10b981');
+    buildFinancialChart('netIncomeChart', 'netIncomeChartWrap', labels, metrics.map(m => m.netIncome), 'Net Income',     '#22c55e');
+    buildFinancialChart('epsChart',       'epsChartWrap',       labels, metrics.map(m => m.eps),       'EPS',            '#f59e0b', true);
+    buildFinancialChart('ebitdaChart',    'ebitdaChartWrap',    labels, metrics.map(fhEBITDA),         'EBITDA',         '#8b5cf6');
+
+  } else if (period === 'Quarterly') {
+    if (!xbrlReports.quarterly.length) { buildChartsUnavailable('No quarterly XBRL data available on Finnhub'); return; }
+    const metrics = extractMetrics(xbrlReports.quarterly);
+    const labels  = metrics.map(m => m.qLabel);
+    buildFinancialChart('revenueChart',   'revenueChartWrap',   labels, metrics.map(m => m.revenue),   'Revenue',        '#3b82f6');
+    buildFinancialChart('fcfChart',       'fcfChartWrap',       labels, metrics.map(fhFCF),            'Free Cash Flow', '#10b981');
+    buildFinancialChart('netIncomeChart', 'netIncomeChartWrap', labels, metrics.map(m => m.netIncome), 'Net Income',     '#22c55e');
+    buildFinancialChart('epsChart',       'epsChartWrap',       labels, metrics.map(m => m.eps),       'EPS',            '#f59e0b', true);
+    buildFinancialChart('ebitdaChart',    'ebitdaChartWrap',    labels, metrics.map(fhEBITDA),         'EBITDA',         '#8b5cf6');
+
+  } else if (period === 'Quarterly (TTM)') {
+    if (xbrlReports.quarterly.length < 4) { buildChartsUnavailable('Not enough quarterly data for TTM'); return; }
+    const metrics = extractMetrics(xbrlReports.quarterly);
+    const fn  = arr => toTTMWindow(arr).filter(v => v != null);
+    const labels = metrics.slice(3).map(m => m.qLabel);
+    buildFinancialChart('revenueChart',   'revenueChartWrap',   labels, fn(metrics.map(m => m.revenue)),   'Revenue TTM',    '#3b82f6');
+    buildFinancialChart('fcfChart',       'fcfChartWrap',       labels, fn(metrics.map(fhFCF)),            'FCF TTM',        '#10b981');
+    buildFinancialChart('netIncomeChart', 'netIncomeChartWrap', labels, fn(metrics.map(m => m.netIncome)), 'Net Income TTM', '#22c55e');
+    buildFinancialChart('epsChart',       'epsChartWrap',       labels, fn(metrics.map(m => m.eps)),       'EPS TTM',        '#f59e0b', true);
+    buildFinancialChart('ebitdaChart',    'ebitdaChartWrap',    labels, fn(metrics.map(fhEBITDA)),         'EBITDA TTM',     '#8b5cf6');
+  }
+}
+
+
+
+// ══════════════════════════════════════════
+// TWELVE DATA LOADER
+// Free endpoints: /quote (1cr), /time_series (1cr), /logo (1cr)
+// Paywalled: /earnings_calendar, /profile (Grow), /income_statement (100cr), /cash_flow (100cr), /balance_sheet (Pro)
+// ══════════════════════════════════════════
+async function loadTickerTwelveData(ticker) {
+  const { key, base } = APIS.twelvedata;
+  const td = (ep, params) => `${base}/${ep}?symbol=${ticker}&apikey=${key}&${params}`;
+
+  const [quoteRaw, logoRaw] = await Promise.all([
+    apiFetch(td('quote', '')),
+    apiFetch(td('logo', '')),
+  ]);
+
+  // Validate
+  if (!quoteRaw || quoteRaw.status === 'error' || !quoteRaw.symbol) {
+    throw new Error(quoteRaw?.message || `Ticker "${ticker}" not found on Twelve Data`);
+  }
+
+  currentTicker = ticker;
+
+  const q = quoteRaw;
+  const _pf = v => { if (v == null || v === '' || v === 'NA' || v === 'N/A') return null; const n = parseFloat(v); return isNaN(n) ? null : n; };
+
+  currentPrice = _pf(q.close) ?? _pf(q.previous_close) ?? 0;
+  const chgAmt = _pf(q.change);
+  const chgPct = _pf(q.percent_change);
+
+  // Company name comes from quote.name in TD
+  const name = q.name || ticker;
+  const exchange = q.exchange || q.mic_code || '—';
+  setHeader(name, `${ticker} | ${exchange}`, currentPrice, chgPct, chgAmt, logoRaw?.url || null);
+
+  // Stats — only PE available from /quote on free tier; all others require /statistics (Grow plan)
+  const pe = _pf(q.pe);
+  setMetrics({
+    mktCap: null, pe, ps: null, evEbitda: null, pb: null,
+    fcfTTM: null, fcfYield: null, fcfPerSh: null, sbc: null,
+    margin: null, opMargin: null, revTTM: null, eps: null, roe: null,
+    cash: null, debt: null, de: null,
+    divAmt: null, divYield: null, payout: null,
+  });
+
+  // DCF — no FCF or shares data on free tier
+  setDCF(0, 0, ticker);
+
+  // Financial charts: all require paid plan
+  buildChartsUnavailable('Historical financials require a Twelve Data Grow plan ($29/mo)');
+
+  // Price chart: /time_series is FREE — best feature of TD free tier
+  await buildPriceChartTD(ticker);
+
+  // Earnings calendar — not available on free tier
+  buildEarningsUnavailableTD();
+
+  // Profile — no /profile on free tier, show what we have from quote
+  buildProfileTD(q, ticker);
+}
+
+async function buildPriceChartTD(ticker) {
+  const { key, base } = APIS.twelvedata;
+  elShow('priceLoading'); elHide('priceChart');
+  let pts = [], labels = [], tdError = null;
+  try {
+    const data = await apiFetch(`${base}/time_series?symbol=${ticker}&interval=1day&outputsize=365&apikey=${key}`);
+    if (data?.status === 'error') {
+      tdError = data.message || 'Twelve Data error';
+    } else {
+      const values = Array.isArray(data?.values) ? data.values : [];
+      const sorted = [...values].reverse();
+      labels = sorted.map(d => d.datetime);
+      pts    = sorted.map(d => parseFloat(d.close)).filter(v => !isNaN(v));
+      labels = labels.slice(0, pts.length);
+    }
+  } catch(e) { tdError = e.message; console.warn('TD time_series:', e.message); }
+  if (tdError && !pts.length) {
+    elHide('priceLoading');
+    elHide('priceChart');
+    const wrap = document.getElementById('priceChartWrap');
+    wrap.querySelectorAll('.chart-locked').forEach(el => el.remove());
+    const msg = document.createElement('div');
+    msg.className = 'chart-locked';
+    msg.innerHTML = `<div class="chart-locked-icon">🔒</div><div class="chart-locked-text">${tdError}</div>`;
+    wrap.appendChild(msg);
+    return;
+  }
+  buildPriceLineChart(labels, pts);
+}
+
+function buildEarningsUnavailableTD() {
+  buildEarningsTable([], 'EPS Est.', 'Rev. Est.', '🔒 Earnings calendar requires a Twelve Data paid plan');
+}
+
+function buildProfileTD(q, ticker) {
+  const body = document.getElementById('aiBody');
+  const _pf = v => { if (v == null || v === '' || v === 'NA') return null; const n = parseFloat(v); return isNaN(n) ? null : n; };
+
+  const fiftyTwoHigh = _pf(q.fifty_two_week?.high);
+  const fiftyTwoLow  = _pf(q.fifty_two_week?.low);
+  const avgVol = _pf(q.average_volume);
+  const vol    = _pf(q.volume);
+  const pe     = _pf(q.pe);
+
+  const rows = [
+    ['Exchange',       q.exchange || '—'],
+    ['Currency',       q.currency || '—'],
+    ['52W High',       fiftyTwoHigh ? `$${fiftyTwoHigh.toFixed(2)}` : '—'],
+    ['52W Low',        fiftyTwoLow  ? `$${fiftyTwoLow.toFixed(2)}`  : '—'],
+    ['Volume',         vol    ? fmt(vol)    : '—'],
+    ['Avg Volume',     avgVol ? fmt(avgVol) : '—'],
+    ['P/E (TTM)',      pe     ? pe.toFixed(1) + '×' : '—'],
+    ['Prev Close',     q.previous_close ? `$${parseFloat(q.previous_close).toFixed(2)}` : '—'],
+    ['Open',           q.open ? `$${parseFloat(q.open).toFixed(2)}` : '—'],
+  ].filter(([, v]) => v !== '—');
+
+  body.innerHTML = `
+    <div style="margin-bottom:10px;font-size:12px;color:var(--muted2)">
+      Company description requires Twelve Data Grow plan. Showing available quote data.
+    </div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:8px">
+      ${rows.map(([lbl, val]) => `
+        <div style="background:var(--bg3);border:1px solid var(--border);border-radius:6px;padding:8px 12px">
+          <div style="font-size:11px;color:var(--muted);margin-bottom:3px">${lbl}</div>
+          <div style="font-size:13px;font-weight:600;color:var(--text)">${val}</div>
+        </div>`).join('')}
+    </div>`;
 }
 
 // ── FINNHUB PROFILE + NEWS + RECOMMENDATIONS ──
@@ -1295,31 +1474,24 @@ function buildPriceCardFinnhub(quote) {
   wrap.appendChild(div);
 }
 
-// ── FMP PRICE CHART ──
-async function buildPriceChart(ticker) {
-  const { key, base } = APIS.fmp;
+// ══════════════════════════════════════════
+// SHARED PRICE CHART RENDERER
+// All APIs that have price history call this after fetching their own data.
+// ══════════════════════════════════════════
+function buildPriceLineChart(labels, pts) {
   const canvas = document.getElementById('priceChart');
-  const wrap = canvas.parentElement;
+  const wrap   = document.getElementById('priceChartWrap');
   if (priceChartInst) { priceChartInst.destroy(); priceChartInst = null; }
-  wrap.querySelectorAll('.chart-locked').forEach(el => el.remove());
-  const loadEl = document.getElementById('priceLoading');
-  if (loadEl) loadEl.style.display = 'flex';
-  canvas.style.display = 'none';
+  wrap.querySelectorAll('.chart-locked, .quote-card').forEach(el => el.remove());
+  elHide('priceLoading');
 
-  let pts = [], labels = [];
-  try {
-    const data = await apiFetch(base+'/stable/historical-price-eod/light?symbol='+ticker+'&limit=365&apikey='+key);
-    if (data && Array.isArray(data) && data.length > 0) {
-      const sorted = [...data].reverse();
-      labels = sorted.map(d => d.date);
-      pts    = sorted.map(d => d.close ?? d.price ?? d.adjClose ?? null).filter(v => v != null);
-      labels = labels.slice(labels.length - pts.length);
-    }
-  } catch(e) { console.warn('FMP price history:', e.message); }
+  // Re-enable expand (may have been disabled by Finnhub OHLC card)
+  const card = document.getElementById('priceCard');
+  if (card) { card.onclick = () => openChartModal('Price','priceChart'); card.style.cursor = 'pointer'; }
+  const expBtn = document.getElementById('priceExpandBtn');
+  if (expBtn) expBtn.style.display = '';
 
-  if (loadEl) loadEl.style.display = 'none';
-
-  if (!pts.length) {
+  if (!pts || !pts.length) {
     canvas.style.display = 'none';
     const msg = document.createElement('div');
     msg.className = 'chart-locked';
@@ -1342,26 +1514,68 @@ async function buildPriceChart(ticker) {
         callbacks: { label: ctx => '$'+ctx.parsed.y.toFixed(2) }
       }},
       scales: {
-        x: { display: true, grid: { display: false }, ticks: { display: true, maxTicksLimit: 6, font: { size: 10, family: 'Inter' }, color: '#9ca3af', callback: function(val,i){ return labels[i]?labels[i].slice(0,7):''; }}, border: { display: false }},
-        y: { display: true, position: 'right', grid: { color: 'rgba(0,0,0,0.05)' }, border: { display: false }, ticks: { font: { size: 10, family: 'Inter' }, color: '#9ca3af', maxTicksLimit: 4, callback: v => '$'+v.toFixed(0) }}
+        x: { display: true, grid: { display: false }, border: { display: false }, ticks: { maxTicksLimit: 6, font: { size: 10, family: 'Inter' }, color: '#9ca3af', callback: function(val,i){ return labels[i] ? labels[i].slice(0,7) : ''; } } },
+        y: { display: true, position: 'right', grid: { color: 'rgba(0,0,0,0.05)' }, border: { display: false }, ticks: { font: { size: 10, family: 'Inter' }, color: '#9ca3af', maxTicksLimit: 4, callback: v => '$'+v.toFixed(0) } }
       }
     }
   });
 }
 
+// ── FMP PRICE CHART ──
+async function buildPriceChart(ticker) {
+  const { key, base } = APIS.fmp;
+  elShow('priceLoading'); elHide('priceChart');
+  let pts = [], labels = [];
+  try {
+    const data = await apiFetch(base+'/stable/historical-price-eod/light?symbol='+ticker+'&limit=365&apikey='+key);
+    if (Array.isArray(data) && data.length) {
+      const sorted = [...data].reverse();
+      labels = sorted.map(d => d.date);
+      pts    = sorted.map(d => d.close ?? d.price ?? d.adjClose ?? null).filter(v => v != null);
+      labels = labels.slice(labels.length - pts.length);
+    }
+  } catch(e) { console.warn('FMP price history:', e.message); }
+  buildPriceLineChart(labels, pts);
+}
+
 // ── SHARED UI SETTERS ──
-function setHeader(name, sub, price, chgPct, chgAmt) {
+function setHeader(name, sub, price, chgPct, chgAmt, logoUrl) {
   document.getElementById('topbarTitle').textContent = 'Insights — ' + currentTicker;
   document.getElementById('companyName').textContent = name;
   document.getElementById('companySub').textContent = sub;
+  // Logo — cache the URL per ticker so it survives page reload without an extra API call
+  const logoKey = 'logo_' + currentTicker;
+  const resolvedLogo = logoUrl || (() => { try { return localStorage.getItem(logoKey); } catch(e) { return null; } })();
+  if (resolvedLogo) {
+    try { localStorage.setItem(logoKey, resolvedLogo); } catch(e) {}
+  }
+  const logoEl = document.getElementById('companyLogo');
+  if (resolvedLogo) {
+    logoEl.src = resolvedLogo;
+    logoEl.style.display = 'inline-block';
+    logoEl.onerror = () => { logoEl.style.display = 'none'; };
+  } else {
+    logoEl.style.display = 'none';
+  }
   document.getElementById('companyPrice').textContent = price ? '$'+price.toFixed(2) : '—';
-  const up = (chgPct ?? 0) >= 0;
+  const pct = (chgPct != null && !isNaN(chgPct)) ? Number(chgPct) : null;
+  const amt = (chgAmt != null && !isNaN(chgAmt)) ? Number(chgAmt) : null;
+  const up = (pct ?? 0) >= 0;
   const badge = document.getElementById('priceBadge');
-  badge.textContent = chgAmt != null && chgPct != null ? '$'+Math.abs(chgAmt).toFixed(2)+' | '+(up?'+':'')+chgPct.toFixed(2)+'%' : '—';
+  badge.textContent = amt != null && pct != null
+    ? '$'+Math.abs(amt).toFixed(2)+' | '+(up?'+':'')+pct.toFixed(2)+'%'
+    : '—';
   badge.className = 'price-badge '+(up?'up':'dn');
   badge.style.opacity = '1';
   const ptb = document.getElementById('priceTrendBadge');
-  if (chgPct != null) { ptb.textContent = (up?'↑':'↓')+Math.abs(chgPct).toFixed(2)+'%'; ptb.className = 'trend-badge '+(up?'up':'dn'); }
+  if (pct != null) { ptb.textContent = (up?'↑':'↓')+Math.abs(pct).toFixed(2)+'%'; ptb.className = 'trend-badge '+(up?'up':'dn'); }
+}
+
+function setDCF(fcfB, sharesB, ticker) {
+  document.getElementById('dcfFcf').value = fcfB != null ? parseFloat(fcfB).toFixed(1) : 0;
+  document.getElementById('dcfSh').value  = sharesB != null ? parseFloat(sharesB).toFixed(2) : 0;
+  document.getElementById('dcfTicker').textContent = ticker;
+  calcDCF();
 }
 
 function setMetrics(d) {
@@ -1403,42 +1617,50 @@ function buildChartsUnavailable(msg) {
   });
 }
 
-function buildEarnings(data, currentTicker) {
+// ── SHARED EARNINGS TABLE ──
+// Accepts normalised rows: { date, symbol, epsEst, col4Html, isCurrent }
+// col3Label / col4Label allow callers to override headers (e.g. AV shows actuals)
+function buildEarningsTable(rows, col3Label='EPS Est.', col4Label='Rev. Est.', emptyMsg='No upcoming earnings found') {
   const body = document.getElementById('erBody');
-  body.innerHTML = '';
-  // Reset headers to default
   const thead = body.closest('table')?.querySelector('thead tr');
-  if (thead) thead.innerHTML = '<th>Date</th><th>Company</th><th class="r">EPS Est.</th><th class="r">Rev. Est.</th>';
-  if (!data || !data.length) {
-    body.innerHTML = '<tr><td colspan="4" style="color:var(--muted);font-size:12px;padding:12px">No upcoming earnings found</td></tr>';
+  if (thead) thead.innerHTML = `<th>Date</th><th>Company</th><th class="r">${col3Label}</th><th class="r">${col4Label}</th>`;
+  body.innerHTML = '';
+  if (!rows || !rows.length) {
+    body.innerHTML = `<tr><td colspan="4" style="color:var(--muted);font-size:12px;padding:12px">${emptyMsg}</td></tr>`;
     return;
   }
-  data.slice(0,8).forEach(e => {
+  rows.slice(0, 8).forEach(r => {
     const tr = document.createElement('tr');
-    const epsEst = e.epsEstimated != null ? '$'+parseFloat(e.epsEstimated).toFixed(2) : '—';
-    const revEst = e.revenueEstimated != null ? '$'+fmt(e.revenueEstimated) : '—';
-    tr.innerHTML = '<td style="font-size:12px;color:var(--muted);white-space:nowrap">'+e.date+'</td><td><span class="t-sym" style="'+(e.symbol===currentTicker?'color:var(--blue)':'')+'">'+e.symbol+'</span></td><td class="t-num">'+epsEst+'</td><td class="t-num t-dim">'+revEst+'</td>';
+    tr.innerHTML = `
+      <td style="font-size:12px;color:var(--muted);white-space:nowrap">${r.date || '—'}</td>
+      <td><span class="t-sym" style="${r.isCurrent ? 'color:var(--blue)' : ''}">${r.symbol || '—'}</span></td>
+      <td class="t-num">${r.col3Html || '—'}</td>
+      <td class="t-num t-dim">${r.col4Html || '—'}</td>`;
     body.appendChild(tr);
   });
 }
 
+function buildEarnings(data, currentTicker) {
+  const rows = (data || []).map(e => ({
+    date: e.date,
+    symbol: e.symbol,
+    isCurrent: e.symbol === currentTicker,
+    col3Html: e.epsEstimated != null ? '$'+parseFloat(e.epsEstimated).toFixed(2) : '—',
+    col4Html: e.revenueEstimated != null ? '$'+fmt(e.revenueEstimated) : '—',
+  }));
+  buildEarningsTable(rows, 'EPS Est.', 'Rev. Est.', 'No upcoming earnings found');
+}
+
 function buildEarningsFinnhub(data, ticker) {
-  const body = document.getElementById('erBody');
-  body.innerHTML = '';
-  const thead = body.closest('table')?.querySelector('thead tr');
-  if (thead) thead.innerHTML = '<th>Date</th><th>Company</th><th class="r">EPS Est.</th><th class="r">Rev. Est.</th>';
   const filtered = (data || []).filter(e => !e.symbol || e.symbol === ticker || data.length < 20);
-  if (!filtered.length) {
-    body.innerHTML = '<tr><td colspan="4" style="color:var(--muted);font-size:12px;padding:12px">No upcoming earnings found</td></tr>';
-    return;
-  }
-  filtered.slice(0,8).forEach(e => {
-    const tr = document.createElement('tr');
-    const epsEst = e.epsEstimate != null ? '$'+parseFloat(e.epsEstimate).toFixed(2) : '—';
-    const revEst = e.revenueEstimate != null ? '$'+fmt(e.revenueEstimate) : '—';
-    tr.innerHTML = '<td style="font-size:12px;color:var(--muted);white-space:nowrap">'+(e.date||'—')+'</td><td><span class="t-sym" style="color:var(--blue)">'+(e.symbol||ticker)+'</span></td><td class="t-num">'+epsEst+'</td><td class="t-num t-dim">'+revEst+'</td>';
-    body.appendChild(tr);
-  });
+  const rows = filtered.map(e => ({
+    date: e.date,
+    symbol: e.symbol || ticker,
+    isCurrent: true,
+    col3Html: e.epsEstimate != null ? '$'+parseFloat(e.epsEstimate).toFixed(2) : '—',
+    col4Html: e.revenueEstimate != null ? '$'+fmt(e.revenueEstimate) : '—',
+  }));
+  buildEarningsTable(rows, 'EPS Est.', 'Rev. Est.', 'No upcoming earnings found');
 }
 
 function calcDCF() {
@@ -1488,6 +1710,7 @@ function showLoading(msg) {
   // Show skeleton in header
   document.getElementById('companyName').innerHTML = '<span class="skel" style="width:180px;height:22px;display:inline-block"></span>';
   document.getElementById('companySub').innerHTML = '<span class="skel" style="width:100px;height:14px;display:inline-block"></span>';
+  const _logoClr = document.getElementById('companyLogo'); if (_logoClr) _logoClr.style.display = 'none';
   document.getElementById('companyPrice').innerHTML = '<span class="skel" style="width:90px;height:28px;display:inline-block"></span>';
   document.getElementById('priceBadge').style.opacity = '0';
   document.getElementById('priceTrendBadge').textContent = '—';
@@ -1519,7 +1742,18 @@ function toggleSidebar() {
   main.classList.toggle('expanded', !isCollapsed);
 }
 function setNav(el){document.querySelectorAll('.nav-link').forEach(n=>n.classList.remove('active'));el.classList.add('active');}
-function periodClick(btn){document.querySelectorAll('.period-btn').forEach(b=>b.classList.remove('active'));btn.classList.add('active');}
+function periodClick(btn) {
+  document.querySelectorAll('.period-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  if (!lastRawData) return;
+  const period = btn.textContent.trim();
+  if (lastRawData.api === 'alphavantage') {
+    buildAlphaVantageCharts(lastRawData.incomeRaw, lastRawData.cashFlowRaw, lastRawData.earningsRaw, period);
+  } else if (lastRawData.api === 'finnhub') {
+    buildFinnhubChartsFromData(lastRawData.xbrlReports, period);
+  }
+  // FMP and Twelve Data financial charts are paywalled — period toggle has no effect
+}
 function ctrlClick(btn){btn.closest('.ctrl-group').querySelectorAll('.ctrl-btn').forEach(b=>b.classList.remove('active'));btn.classList.add('active');}
 
 loadTicker();
@@ -1620,9 +1854,11 @@ function closeChartModal() {
   if (modalChartInst) { modalChartInst.destroy(); modalChartInst = null; }
 }
 
-// Close on overlay click
-document.getElementById('chartModalOverlay').addEventListener('click', function(e) {
-  if (e.target === this) closeChartModal();
+// Close on overlay click — deferred since modal element is after this script
+document.addEventListener('DOMContentLoaded', () => {
+  document.getElementById('chartModalOverlay')?.addEventListener('click', function(e) {
+    if (e.target === this) closeChartModal();
+  });
 });
 
 // Close on Escape
