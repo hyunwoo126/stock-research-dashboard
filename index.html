@@ -103,7 +103,9 @@
   .metrics-col-title { font-size: 11px; font-weight: 600; color: var(--text); margin-bottom: 10px; text-transform: uppercase; letter-spacing: 0.5px; }
   .metric-row { display: flex; justify-content: space-between; align-items: baseline; padding: 3px 0; gap: 8px; }
   .metric-lbl { font-size: 12px; color: var(--muted); white-space: nowrap; }
-  .metric-val { font-size: 12px; font-weight: 500; color: var(--text); text-align: right; white-space: nowrap; }
+  .metric-val { font-size: 12px; font-weight: 500; color: var(--text); text-align: right; white-space: nowrap; display: inline-flex; align-items: center; gap: 4px; }
+  .src-dot { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; display: inline-block; opacity: 0.85; }
+  .chart-src-badge { font-size: 10px; font-weight: 400; padding: 1px 5px; border-radius: 3px; opacity: 0.75; margin-left: 4px; white-space: nowrap; }
   .metric-val.red { color: var(--red); }
   /* PERIOD TOGGLE */
   .period-row { display: flex; justify-content: center; padding: 14px 0; background: var(--bg2); border-bottom: 1px solid var(--border); gap: 4px; }
@@ -112,7 +114,7 @@
   .period-btn.active { background: var(--blue); color: #fff; }
   /* CHARTS AREA */
   .charts-area { padding: 20px 24px; background: var(--bg); }
-  .charts-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; margin-bottom: 14px; }
+  .charts-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; margin-bottom: 14px; }
   .chart-card { background: var(--card); border: 1px solid var(--border); border-radius: 8px; overflow: hidden; cursor: pointer; transition: border-color .15s, box-shadow .15s; }
   .chart-card:hover { border-color: var(--blue); box-shadow: 0 2px 8px rgba(9,105,218,0.08); }
   .chart-card-header { display: flex; align-items: center; justify-content: space-between; padding: 14px 16px 10px; }
@@ -185,9 +187,9 @@
   .section-spinner { width: 18px; height: 18px; border-radius: 50%; border: 2px solid var(--border); border-top-color: var(--blue); animation: spin .7s linear infinite; flex-shrink: 0; }
   .section-loading-text { font-size: 12px; color: var(--muted); }
   /* RESPONSIVE */
-  @media (max-width: 1100px) { .charts-grid { grid-template-columns: repeat(2, 1fr); } .metrics-grid { grid-template-columns: repeat(3, 1fr); } .metrics-col:nth-child(3) { border-right: none; } }
+  @media (max-width: 900px) { .charts-grid { grid-template-columns: repeat(2, 1fr); } .charts-grid .chart-card[style*='span 3'] { grid-column: span 2; } .metrics-grid { grid-template-columns: repeat(3, 1fr); } .metrics-col:nth-child(3) { border-right: none; } }
   @media (max-width: 860px) { .dcf-layout { grid-template-columns: 1fr; } .bottom-grid { grid-template-columns: 1fr; } }
-  @media (max-width: 640px) { .sidebar { display: none; } .main, .main.expanded { margin-left: 0; } .metrics-grid { grid-template-columns: 1fr 1fr; } .charts-grid { grid-template-columns: 1fr; } }
+  @media (max-width: 640px) { .sidebar { display: none; } .main, .main.expanded { margin-left: 0; } .metrics-grid { grid-template-columns: 1fr 1fr; } .charts-grid { grid-template-columns: 1fr; } .charts-grid .chart-card[style*='span 3'] { grid-column: span 1; } }
   ::-webkit-scrollbar { width: 4px; height: 4px; }
   ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
 </style>
@@ -242,10 +244,11 @@
     <div class="topbar-actions" style="display:flex;align-items:center;gap:10px">
       <div style="position:relative">
         <select id="apiSelector" onchange="onApiChange()" style="appearance:none;-webkit-appearance:none;background:var(--bg3);border:1px solid var(--border);border-radius:6px;padding:5px 30px 5px 10px;font-size:12px;font-weight:500;font-family:'Inter',sans-serif;color:var(--text);cursor:pointer;outline:none;transition:border-color .15s;" title="Select data provider">
-          <option value="fmp">FMP</option>
-          <option value="finnhub">Finnhub</option>
-          <option value="alphavantage">Alpha Vantage</option>
-          <option value="twelvedata">Twelve Data</option>
+          <option value="combo">⚡ Combo</option>
+          <option value="fmp">🟦 FMP</option>
+          <option value="finnhub">🟠 Finnhub</option>
+          <option value="alphavantage">🟢 Alpha Vantage</option>
+          <option value="twelvedata">🟣 Twelve Data</option>
         </select>
         <span style="position:absolute;right:8px;top:50%;transform:translateY(-50%);pointer-events:none;font-size:10px;color:var(--muted)">▾</span>
       </div>
@@ -370,9 +373,6 @@
           </div>
           <div class="chart-body" id="netIncomeChartWrap"><canvas id="netIncomeChart" style="display:none" height="160"></canvas><div class="section-loading" id="netIncomeLoading" style="height:160px"><div class="section-spinner"></div><span class="section-loading-text">Loading…</span></div></div>
         </div>
-      </div>
-
-      <div class="charts-grid">
         <div class="chart-card" data-title="EPS" onclick="openChartModal('EPS','epsChart')">
           <div class="chart-card-header">
             <div class="chart-card-title">EPS</div>
@@ -387,7 +387,7 @@
           </div>
           <div class="chart-body" id="ebitdaChartWrap"><canvas id="ebitdaChart" style="display:none" height="160"></canvas><div class="section-loading" id="ebitdaLoading" style="height:160px"><div class="section-spinner"></div><span class="section-loading-text">Loading…</span></div></div>
         </div>
-        <div class="chart-card" style="grid-column: span 2;">
+        <div class="chart-card" style="grid-column: span 3;">
           <div class="full-card-header">
             <span class="full-card-title">DCF Calculator <span id="dcfTicker" style="color:var(--muted);font-weight:400;font-size:12px;margin-left:4px"></span></span>
           </div>
@@ -457,9 +457,23 @@ const APIS = {
     key: 'e9a6a6a59ac84a3594853119360f0a48',
     base: 'https://api.twelvedata.com',
     label: 'Twelve Data'
+  },
+  combo: {
+    key: '',
+    base: 'https://financialmodelingprep.com', // use FMP base for cache timestamp lookup
+    label: 'Combo'
   }
 };
-let activeApi = 'fmp';
+let activeApi = 'combo';
+
+// ── API SOURCE META (used for combo badges) ──
+const API_META = {
+  fmp:          { label: 'FMP',      emoji: '🟦', color: '#2563eb' },
+  finnhub:      { label: 'Finnhub',  emoji: '🟠', color: '#f97316' },
+  alphavantage: { label: 'AV',       emoji: '🟢', color: '#16a34a' },
+  twelvedata:   { label: 'TD',       emoji: '🟣', color: '#7c3aed' },
+};
+
 
 let priceChartInst;
 let currentPrice = 0;
@@ -531,24 +545,32 @@ function clearOldCache() {
 }
 
 // Returns the oldest cached timestamp for current ticker + active API
+// For Combo: returns the most-recent timestamp across all APIs
 function getTickerCacheTime(ticker) {
   const prefix = 'qcache_';
-  const apiBase = APIS[activeApi].base.replace('https://', '').replace('http://', '');
+  const isCombo = activeApi === 'combo';
+  const apiBase = isCombo ? null : APIS[activeApi].base.replace('https://', '').replace('http://', '');
   let oldest = null;
   for (let i = 0; i < localStorage.length; i++) {
     const k = localStorage.key(i);
     if (!k || !k.startsWith(prefix)) continue;
     if (!k.toLowerCase().includes(ticker.toLowerCase())) continue;
-    if (!k.includes(apiBase)) continue;
+    if (!isCombo && !k.includes(apiBase)) continue;
     try {
       const { ts } = JSON.parse(localStorage.getItem(k));
-      if (oldest === null || ts < oldest) oldest = ts;
+      // Combo: track most recent (newest) entry; single API: track oldest
+      if (isCombo) {
+        if (oldest === null || ts > oldest) oldest = ts;
+      } else {
+        if (oldest === null || ts < oldest) oldest = ts;
+      }
     } catch(e) {}
   }
   return oldest;
 }
 
 function updateCacheStatus(ticker, fromCache, wasForceRefresh = false) {
+  if (activeApi === 'combo') return; // Combo sets its own status inside loadTickerCombo
   const el = document.getElementById('cacheStatus');
   if (!el || !ticker) { if(el) el.innerHTML=''; return; }
   const ts = getTickerCacheTime(ticker);
@@ -649,7 +671,7 @@ function setIdx(id, q) {
 async function loadTicker() {
   const ticker = document.getElementById('tickerInput').value.trim().toUpperCase();
   if (!ticker) return;
-  showLoading('Loading '+ticker+' via '+APIS[activeApi].label+'…');
+  showLoading('Loading '+ticker+(activeApi==='combo'?' via Combo (cache)':' via '+APIS[activeApi].label)+'…');
   hideError();
   lastRawData = null;
   // Reset period toggle to Annually
@@ -662,6 +684,8 @@ async function loadTicker() {
     ? `${APIS.alphavantage.base}/query?function=OVERVIEW&symbol=${ticker}&apikey=${APIS.alphavantage.key}`
     : activeApi === 'twelvedata'
     ? `${APIS.twelvedata.base}/quote?symbol=${ticker}&apikey=${APIS.twelvedata.key}`
+    : activeApi === 'combo'
+    ? `${APIS.fmp.base}/stable/profile?symbol=${ticker}&apikey=${APIS.fmp.key}`
     : `${APIS.finnhub.base}/stock/profile2?symbol=${ticker}&token=${APIS.finnhub.key}`;
   const wasCached = !forceRefresh && cacheGet(sampleUrl) !== null;
 
@@ -678,6 +702,8 @@ async function loadTicker() {
       await loadTickerAlphaVantage(ticker);
     } else if (activeApi === 'twelvedata') {
       await loadTickerTwelveData(ticker);
+    } else if (activeApi === 'combo') {
+      await loadTickerCombo(ticker);
     } else {
       await loadTickerFinnhub(ticker);
     }
@@ -690,6 +716,338 @@ async function loadTicker() {
     document.getElementById('cacheStatus').innerHTML = '';
   } finally {
     hideLoading();
+  }
+}
+
+
+// ══════════════════════════════════════════
+// COMBO LOADER — hydrate from any cached data
+// Uses cache-only reads; never makes live API calls.
+// Priority rules:
+//   Header/metrics: FMP > Finnhub > AV > TD
+//   Price chart:    TD (365d) > FMP (365d) > AV > Finnhub (OHLC only)
+//   Fin. charts:    Finnhub XBRL > AV (longest series wins per chart)
+//   Earnings:       FMP > Finnhub > AV
+//   Profile:        FMP description > Finnhub news > AV overview
+// ══════════════════════════════════════════
+async function loadTickerCombo(ticker) {
+  const fmp = APIS.fmp, fh = APIS.finnhub, av = APIS.alphavantage, td = APIS.twelvedata;
+
+  // ── Helper: read a URL from cache only (null = not cached) ──
+  function cached(url) {
+    const hit = cacheGet(url);
+    return hit ? hit.data : null;
+  }
+
+  // ── Read all available cached data ──
+  const fmpProfile   = cached(`${fmp.base}/stable/profile?symbol=${ticker}&apikey=${fmp.key}`);
+  const fmpMetrics   = cached(`${fmp.base}/stable/key-metrics-ttm?symbol=${ticker}&apikey=${fmp.key}`);
+  const fmpQuote     = cached(`${fmp.base}/stable/quote?symbol=${ticker}&apikey=${fmp.key}`);
+  const fmpEarnings  = cached(`${fmp.base}/stable/earnings-calendar?from=${todayPlus(0)}&to=${todayPlus(60)}&apikey=${fmp.key}`);
+  const fmpPrice     = cached(`${fmp.base}/stable/historical-price-eod/light?symbol=${ticker}&limit=365&apikey=${fmp.key}`);
+
+  const fhProfile    = cached(`${fh.base}/stock/profile2?symbol=${ticker}&token=${fh.key}`);
+  const fhQuote      = cached(`${fh.base}/quote?symbol=${ticker}&token=${fh.key}`);
+  const fhMetrics    = cached(`${fh.base}/stock/metric?symbol=${ticker}&metric=all&token=${fh.key}`);
+  const fhEarnings   = cached(`${fh.base}/calendar/earnings?from=${todayPlus(0)}&to=${todayPlus(60)}&token=${fh.key}`);
+  const fhXbrlAnnual = cached(`${fh.base}/stock/financials-reported?symbol=${ticker}&freq=annual&token=${fh.key}`);
+  const fhXbrlQtr    = cached(`${fh.base}/stock/financials-reported?symbol=${ticker}&freq=quarterly&token=${fh.key}`);
+  const fhNews       = cached(`${fh.base}/company-news?symbol=${ticker}&from=${todayPlus(-30)}&to=${todayPlus(0)}&token=${fh.key}`);
+  const fhRecs       = cached(`${fh.base}/stock/recommendation?symbol=${ticker}&token=${fh.key}`);
+
+  const avOverview   = cached(`${av.base}/query?function=OVERVIEW&symbol=${ticker}&apikey=${av.key}`);
+  const avQuote      = cached(`${av.base}/query?function=GLOBAL_QUOTE&symbol=${ticker}&apikey=${av.key}`);
+  const avIncome     = cached(`${av.base}/query?function=INCOME_STATEMENT&symbol=${ticker}&apikey=${av.key}`);
+  const avCashFlow   = cached(`${av.base}/query?function=CASH_FLOW&symbol=${ticker}&apikey=${av.key}`);
+  const avEarnings   = cached(`${av.base}/query?function=EARNINGS&symbol=${ticker}&apikey=${av.key}`);
+  const avPriceRaw   = cached(`${av.base}/query?function=TIME_SERIES_DAILY&symbol=${ticker}&outputsize=full&apikey=${av.key}`);
+
+  const tdQuote      = cached(`${td.base}/quote?symbol=${ticker}&apikey=${td.key}`);
+  const tdLogo       = cached(`${td.base}/logo?symbol=${ticker}&apikey=${td.key}`);
+  const tdPriceSeries= cached(`${td.base}/time_series?symbol=${ticker}&interval=1day&outputsize=365&apikey=${td.key}`);
+
+  // Guard: need at least one source for header
+  const hasAny = fmpProfile || fhProfile || avOverview || tdQuote;
+  if (!hasAny) throw new Error('No cached data for "'+ticker+'". Load it with at least one API first.');
+
+  currentTicker = ticker;
+
+  // ── HEADER — best available ──
+  let name, sub, price, chgPct, chgAmt, logoUrl = null;
+
+  if (fmpProfile?.[0]) {
+    const p = fmpProfile[0], q = fmpQuote?.[0] || {};
+    name    = p.companyName || ticker;
+    sub     = ticker + ' | ' + (p.exchangeShortName || '—');
+    price   = q.price || p.price || 0;
+    chgPct  = q.changePercentage ?? null;
+    chgAmt  = q.change ?? null;
+    logoUrl = `https://financialmodelingprep.com/image-stock/${ticker}.png?apikey=${fmp.key}`;
+  } else if (fhProfile?.ticker) {
+    const q = fhQuote || {};
+    name    = fhProfile.name || ticker;
+    sub     = ticker + ' | ' + (fhProfile.exchange || '—');
+    price   = q.c || 0;
+    chgPct  = q.dp ?? null;
+    chgAmt  = q.d ?? null;
+    logoUrl = fhProfile.logo || null;
+  } else if (avOverview?.Symbol) {
+    const _pf = v => { const n = parseFloat(String(v||'').replace('%','')); return isNaN(n)?null:n; };
+    const q = avQuote?.['Global Quote'] || {};
+    name    = avOverview.Name || ticker;
+    sub     = ticker + ' | ' + (avOverview.Exchange || '—');
+    price   = _pf(q['05. price']) ?? _pf(avOverview.Price) ?? 0;
+    chgPct  = _pf(q['10. change percent']);
+    chgAmt  = _pf(q['09. change']);
+  } else if (tdQuote?.symbol) {
+    const _pf = v => { const n = parseFloat(v); return isNaN(n)?null:n; };
+    name    = tdQuote.name || ticker;
+    sub     = ticker + ' | ' + (tdQuote.exchange || '—');
+    price   = _pf(tdQuote.close) ?? 0;
+    chgPct  = _pf(tdQuote.percent_change);
+    chgAmt  = _pf(tdQuote.change);
+    logoUrl = tdLogo?.url || null;
+  }
+
+  currentPrice = price;
+  setHeader(name, sub, price, chgPct, chgAmt, logoUrl);
+
+  // ── METRICS — merge best available per field ──
+  // Helper parsers
+  const _n  = v => { const n = parseFloat(v); return isNaN(n) ? null : n; };
+  const _pf = v => { if (v==null||v===''||v==='None'||v==='N/A'||v==='NA') return null; return _n(String(v).replace('%','')); };
+
+  const fmpM = fmpMetrics?.[0] || {};
+  const fhM  = fhMetrics?.metric || {};
+  const ov   = avOverview || {};
+  const tdQ  = tdQuote || {};
+
+  // mktCap
+  const mktCap = (fmpQuote?.[0]?.marketCap || fmpProfile?.[0]?.mktCap) ??
+    (fhProfile?.marketCapitalization ? fhProfile.marketCapitalization * 1e6 : null) ??
+    _n(ov.MarketCapitalization) ?? null;
+
+  // pe
+  const pe = fmpM.peRatioTTM ?? fhM['peBasicExclExtraTTM'] ?? fhM['peTTM'] ??
+    _pf(ov.PERatio) ?? _pf(tdQ.pe) ?? null;
+
+  // ps, evEbitda, pb
+  const ps      = fmpM.priceToSalesRatioTTM ?? fhM['psTTM'] ?? _pf(ov.PriceToSalesRatioTTM) ?? null;
+  const evEbitda= fmpM.evToEBITDATTM ?? fhM['evEbitdaTTM'] ?? _pf(ov.EVToEBITDA) ?? null;
+  const pb      = fmpM.pbRatioTTM ?? fhM['pbQuarterly'] ?? _pf(ov.PriceToBookRatio) ?? null;
+
+  // shares
+  const sharesB_fmp = (mktCap && price) ? mktCap / price / 1e9 : null;
+  const sharesB_fh  = fhProfile?.shareOutstanding ? fhProfile.shareOutstanding / 1e3 : null;
+  const sharesB_av  = _n(ov.SharesOutstanding) ? _n(ov.SharesOutstanding) / 1e9 : null;
+  const sharesB     = sharesB_av ?? sharesB_fmp ?? sharesB_fh ?? 0;
+
+  // fcfTTM: FMP back-calc > Finnhub per-share * shares > AV quarterly sum
+  const fmpEv = fmpM.enterpriseValueTTM ?? null;
+  const fmpEvFcf = fmpM.evToFreeCashFlowTTM ?? null;
+  const fcfTTM_fmp = (fmpEv && fmpEvFcf && fmpEvFcf !== 0) ? fmpEv / fmpEvFcf : null;
+  const fcfTTM_fh  = (fhM['freeCashFlowTTMPerShare'] && sharesB_fh)
+    ? fhM['freeCashFlowTTMPerShare'] * sharesB_fh * 1e9 : null;
+  let fcfTTM_av = null;
+  if (avCashFlow) {
+    const cfQ = (avCashFlow.quarterlyReports || []).slice(0, 4);
+    if (cfQ.length === 4) {
+      const ops  = cfQ.map(r => _pf(r.operatingCashflow));
+      const capx = cfQ.map(r => _pf(r.capitalExpenditures));
+      if (ops.every(v=>v!=null) && capx.every(v=>v!=null))
+        fcfTTM_av = ops.reduce((a,b)=>a+b,0) - Math.abs(capx.reduce((a,b)=>a+b,0));
+    }
+  }
+  const fcfTTM = fcfTTM_fmp ?? fcfTTM_av ?? fcfTTM_fh ?? null;
+
+  // revTTM
+  const fmpEvSales = fmpM.evToSalesTTM ?? null;
+  const revTTM_fmp = (fmpEv && fmpEvSales && fmpEvSales !== 0) ? fmpEv / fmpEvSales : null;
+  const revTTM_fh  = (fhM['revenuePerShareTTM'] && sharesB_fh)
+    ? fhM['revenuePerShareTTM'] * sharesB_fh * 1e9 : null;
+  const revTTM = revTTM_fmp ?? _n(ov.RevenueTTM) ?? revTTM_fh ?? null;
+
+  // margins/roe — FMP is 0-1, Finnhub is 0-100, AV is 0-1
+  const margin  = fmpM.netProfitMarginTTM ?? (fhM['netProfitMarginTTM'] != null ? fhM['netProfitMarginTTM']/100 : null) ?? _pf(ov.ProfitMargin) ?? null;
+  const opMargin= fmpM.operatingProfitMarginTTM ?? (fhM['operatingMarginTTM'] != null ? fhM['operatingMarginTTM']/100 : null) ?? _pf(ov.OperatingMarginTTM) ?? null;
+  const roe     = fmpM.roeTTM ?? (fhM['roeTTM'] != null ? fhM['roeTTM']/100 : null) ?? _pf(ov.ReturnOnEquityTTM) ?? null;
+
+  // eps
+  const eps = fmpM.epsTTM ?? fmpQuote?.[0]?.eps ?? fhM['epsTTM'] ?? _pf(ov.EPS) ?? null;
+
+  // balance
+  const cash = fmpM.cashAndCashEquivalentsTTM ?? (fhM['totalCashPerSharePerAnnual'] && sharesB_fh ? fhM['totalCashPerSharePerAnnual']*sharesB_fh*1e9 : null) ?? null;
+  const debt = fmpM.totalDebtTTM ?? null;
+  const de   = fmpM.debtToEquityTTM ?? fhM['totalDebtToEquityAnnual'] ?? null;
+
+  // dividends
+  const divAmt   = fmpProfile?.[0]?.lastDividend ?? fmpProfile?.[0]?.lastDiv ?? fhM['dividendsPerShareAnnual'] ?? _pf(ov.DividendPerShare) ?? null;
+  const divYield = (divAmt && price) ? (divAmt / price) * 100
+    : (fhM['dividendYieldIndicatedAnnual'] != null ? fhM['dividendYieldIndicatedAnnual']*100 : null)
+    ?? (_pf(ov.DividendYield) ? _pf(ov.DividendYield)*100 : null) ?? null;
+  const payout   = fmpM.payoutRatioTTM ?? (fhM['payoutRatioAnnual'] != null ? fhM['payoutRatioAnnual']/100 : null) ?? _pf(ov.PayoutRatio) ?? null;
+
+  const fcfYield = (fcfTTM && mktCap) ? (fcfTTM/mktCap)*100 : null;
+  const fcfPerSh = (fcfTTM && sharesB) ? fcfTTM/(sharesB*1e9) : null;
+
+  // ── Build sources map for metric dot badges ──
+  const metricSrc = {};
+  const _src = (key, fmpVal, fhVal, avVal, tdVal) => {
+    if (fmpVal != null) return 'fmp';
+    if (fhVal  != null) return 'finnhub';
+    if (avVal  != null) return 'alphavantage';
+    if (tdVal  != null) return 'twelvedata';
+    return null;
+  };
+  metricSrc.mktCap   = _src('mktCap',   fmpQuote?.[0]?.marketCap||fmpProfile?.[0]?.mktCap, fhProfile?.marketCapitalization, _n(ov.MarketCapitalization), null);
+  metricSrc.pe       = _src('pe',        fmpM.peRatioTTM, fhM['peBasicExclExtraTTM']??fhM['peTTM'], _pf(ov.PERatio), _pf(tdQ.pe));
+  metricSrc.ps       = _src('ps',        fmpM.priceToSalesRatioTTM, fhM['psTTM'], _pf(ov.PriceToSalesRatioTTM), null);
+  metricSrc.evEbitda = _src('evEbitda',  fmpM.evToEBITDATTM, fhM['evEbitdaTTM'], _pf(ov.EVToEBITDA), null);
+  metricSrc.pb       = _src('pb',        fmpM.pbRatioTTM, fhM['pbQuarterly'], _pf(ov.PriceToBookRatio), null);
+  metricSrc.fcfTTM   = fcfTTM_fmp != null ? 'fmp' : (fcfTTM_av != null ? 'alphavantage' : (fcfTTM_fh != null ? 'finnhub' : null));
+  metricSrc.fcfYield = metricSrc.fcfTTM;
+  metricSrc.fcfPerSh = metricSrc.fcfTTM;
+  metricSrc.sbc      = fmpM.stockBasedCompensationToRevenueTTM != null ? 'fmp' : null;
+  metricSrc.margin   = fmpM.netProfitMarginTTM != null ? 'fmp' : (fhM['netProfitMarginTTM'] != null ? 'finnhub' : (_pf(ov.ProfitMargin) != null ? 'alphavantage' : null));
+  metricSrc.opMargin = fmpM.operatingProfitMarginTTM != null ? 'fmp' : (fhM['operatingMarginTTM'] != null ? 'finnhub' : (_pf(ov.OperatingMarginTTM) != null ? 'alphavantage' : null));
+  metricSrc.revTTM   = revTTM_fmp != null ? 'fmp' : (_n(ov.RevenueTTM) != null ? 'alphavantage' : (revTTM_fh != null ? 'finnhub' : null));
+  metricSrc.eps      = (fmpM.epsTTM??fmpQuote?.[0]?.eps) != null ? 'fmp' : (fhM['epsTTM'] != null ? 'finnhub' : (_pf(ov.EPS) != null ? 'alphavantage' : null));
+  metricSrc.roe      = fmpM.roeTTM != null ? 'fmp' : (fhM['roeTTM'] != null ? 'finnhub' : (_pf(ov.ReturnOnEquityTTM) != null ? 'alphavantage' : null));
+  metricSrc.cash     = fmpM.cashAndCashEquivalentsTTM != null ? 'fmp' : (fhM['totalCashPerSharePerAnnual'] != null ? 'finnhub' : null);
+  metricSrc.debt     = fmpM.totalDebtTTM != null ? 'fmp' : null;
+  metricSrc.net      = metricSrc.cash;
+  metricSrc.de       = fmpM.debtToEquityTTM != null ? 'fmp' : (fhM['totalDebtToEquityAnnual'] != null ? 'finnhub' : null);
+  metricSrc.divAmt   = (fmpProfile?.[0]?.lastDividend??fmpProfile?.[0]?.lastDiv) != null ? 'fmp' : (fhM['dividendsPerShareAnnual'] != null ? 'finnhub' : (_pf(ov.DividendPerShare) != null ? 'alphavantage' : null));
+  metricSrc.divYield = metricSrc.divAmt;
+  metricSrc.payout   = fmpM.payoutRatioTTM != null ? 'fmp' : (fhM['payoutRatioAnnual'] != null ? 'finnhub' : (_pf(ov.PayoutRatio) != null ? 'alphavantage' : null));
+
+  setMetrics({ mktCap, pe, ps, evEbitda, pb, fcfTTM, fcfYield, fcfPerSh,
+    sbc: fmpM.stockBasedCompensationToRevenueTTM ?? null,
+    margin, opMargin, revTTM, eps, roe, cash, debt, de, divAmt, divYield, payout }, metricSrc);
+
+  setDCF(fcfTTM ? fcfTTM/1e9 : 0, sharesB, ticker);
+
+  // ── PRICE CHART — longest series wins ──
+  const tdPts  = (() => { const vals = Array.isArray(tdPriceSeries?.values) ? tdPriceSeries.values : []; return vals.length; })();
+  const fmpPts = (() => Array.isArray(fmpPrice) ? fmpPrice.length : 0)();
+  const avTs   = avPriceRaw?.['Time Series (Daily)'] || {};
+  const avPts  = Object.keys(avTs).length;
+
+  let priceSrc = null;
+  if (tdPts > 0 || fmpPts > 0 || avPts > 0) {
+    const best = [
+      { src: 'twelvedata',    n: tdPts },
+      { src: 'fmp',           n: fmpPts },
+      { src: 'alphavantage',  n: avPts },
+    ].filter(x => x.n > 0).sort((a,b) => b.n - a.n)[0];
+    priceSrc = best?.src;
+  }
+
+  elShow('priceLoading'); elHide('priceChart');
+  if (priceSrc === 'twelvedata') {
+    const vals = [...tdPriceSeries.values].reverse();
+    buildPriceLineChart(vals.map(d => d.datetime), vals.map(d => parseFloat(d.close)));
+  } else if (priceSrc === 'fmp') {
+    const sorted = [...fmpPrice].reverse();
+    buildPriceLineChart(sorted.map(d => d.date), sorted.map(d => d.close ?? d.price ?? d.adjClose));
+  } else if (priceSrc === 'alphavantage') {
+    const entries = Object.entries(avTs).sort((a,b) => a[0].localeCompare(b[0]));
+    buildPriceLineChart(entries.map(([d]) => d), entries.map(([,v]) => parseFloat(v['4. close'])));
+  } else if (fhQuote) {
+    buildPriceCardFinnhub(fhQuote);
+    priceSrc = 'finnhub';
+  } else {
+    buildPriceLineChart([], []);
+  }
+  if (priceSrc) setChartSourceBadge('priceChart', priceSrc);
+
+  // ── FINANCIAL CHARTS — longest XBRL/AV series wins ──
+  const fhAnnualReports = (fhXbrlAnnual?.data || []).slice(0, 5).reverse();
+  const fhQtrReports    = (fhXbrlQtr?.data   || []).slice(0, 20).reverse();
+  const avIncomeQ       = avIncome?.quarterlyReports || [];
+
+  const hasFinnhubCharts = fhAnnualReports.length >= 2;
+  const hasAVCharts      = avIncomeQ.length >= 4;
+  let finChartSrc = null;
+
+  if (hasFinnhubCharts && hasAVCharts) {
+    const avAnnualCount = (avIncome?.annualReports || []).length;
+    if (fhAnnualReports.length >= avAnnualCount) {
+      finChartSrc = 'finnhub';
+      lastRawData = { api: 'finnhub', xbrlReports: { annual: fhAnnualReports, quarterly: fhQtrReports } };
+      buildFinnhubChartsFromData({ annual: fhAnnualReports, quarterly: fhQtrReports }, 'Annually');
+    } else {
+      finChartSrc = 'alphavantage';
+      lastRawData = { api: 'alphavantage', incomeRaw: avIncome, cashFlowRaw: avCashFlow, earningsRaw: avEarnings };
+      buildAlphaVantageCharts(avIncome, avCashFlow, avEarnings, 'Annually');
+    }
+  } else if (hasFinnhubCharts) {
+    finChartSrc = 'finnhub';
+    lastRawData = { api: 'finnhub', xbrlReports: { annual: fhAnnualReports, quarterly: fhQtrReports } };
+    buildFinnhubChartsFromData({ annual: fhAnnualReports, quarterly: fhQtrReports }, 'Annually');
+  } else if (hasAVCharts) {
+    finChartSrc = 'alphavantage';
+    lastRawData = { api: 'alphavantage', incomeRaw: avIncome, cashFlowRaw: avCashFlow, earningsRaw: avEarnings };
+    buildAlphaVantageCharts(avIncome, avCashFlow, avEarnings, 'Annually');
+  } else {
+    buildChartsUnavailable('Load via Finnhub or Alpha Vantage to cache financial data');
+  }
+  if (finChartSrc) {
+    ['revenueChart','fcfChart','netIncomeChart','epsChart','ebitdaChart'].forEach(id => setChartSourceBadge(id, finChartSrc));
+  }
+
+  // ── P/E CHART ──
+  const fhPeSeries = fhMetrics?.series?.weekly?.pe || fhMetrics?.series?.pe || null;
+  if (fhPeSeries && Array.isArray(fhPeSeries) && fhPeSeries.length > 10) {
+    const sorted = [...fhPeSeries].sort((a,b) => a.period.localeCompare(b.period));
+    buildPELineChart(sorted.map(d => d.period), sorted.map(d => d.v).filter(v => v > 0 && v < 500), 'Finnhub · weekly');
+    setChartSourceBadge('peChart', 'finnhub');
+  } else if (fhQtrReports.length >= 4) {
+    lastRawData = lastRawData || { api: 'finnhub', xbrlReports: { annual: fhAnnualReports, quarterly: fhQtrReports } };
+    buildComputedPEChart(ticker);
+    setChartSourceBadge('peChart', 'finnhub');
+  } else if (avEarnings?.quarterlyEarnings?.length >= 4 && (avPts > 0 || fmpPts > 0)) {
+    buildAVPEChart(avIncome, avEarnings);
+    setChartSourceBadge('peChart', 'alphavantage');
+  } else {
+    buildPELineChart([], [], null);
+  }
+
+  // ── EARNINGS — best available ──
+  if (fmpEarnings) {
+    buildEarnings(fmpEarnings, ticker);
+  } else if (fhEarnings) {
+    buildEarningsFinnhub(fhEarnings.earningsCalendar || [], ticker);
+  } else if (avEarnings) {
+    buildEarningsAV(avEarnings, ticker);
+  } else {
+    document.getElementById('erBody').innerHTML =
+      '<tr><td colspan="4" style="color:var(--muted);font-size:12px;padding:12px 8px">Load via any API to cache earnings data</td></tr>';
+  }
+
+  // ── PROFILE — best available ──
+  if (fmpProfile?.[0]?.description) {
+    document.getElementById('aiBody').innerHTML = fmpProfile[0].description;
+  } else if (fhProfile && (fhNews || fhRecs)) {
+    buildFinnhubProfile(fhProfile, fhNews || [], fhRecs || [], ticker);
+  } else if (avOverview?.Description) {
+    buildProfileAV(avOverview, ticker);
+  } else if (tdQuote) {
+    buildProfileTD(tdQuote, ticker);
+  } else {
+    document.getElementById('aiBody').innerHTML = '<em>Load via any API to cache company profile</em>';
+  }
+
+  // ── CACHE STATUS — show which APIs contributed ──
+  const sources = [];
+  if (fmpProfile || fmpQuote)  sources.push('FMP');
+  if (fhProfile  || fhQuote)   sources.push('Finnhub');
+  if (avOverview || avQuote)   sources.push('AV');
+  if (tdQuote)                 sources.push('TD');
+  const el = document.getElementById('cacheStatus');
+  if (el) {
+    const dot = '<span class="cache-dot fresh"></span>';
+    el.innerHTML = dot + 'Combo · cached from: ' + sources.join(', ');
   }
 }
 
@@ -1629,29 +1987,63 @@ function setDCF(fcfB, sharesB, ticker) {
   calcDCF();
 }
 
-function setMetrics(d) {
+// setMetrics: d = values, s = optional sources map { mktCap: 'fmp', pe: 'finnhub', ... }
+function setMetrics(d, s) {
+  const showSrc = activeApi === 'combo' && s;
   const net = (d.cash != null && d.debt != null) ? d.cash - d.debt : null;
-  document.getElementById('mMktCap').textContent       = d.mktCap ? '$'+fmt(d.mktCap) : '—';
-  document.getElementById('mPE').textContent           = d.pe ? parseFloat(d.pe).toFixed(2) : '—';
-  document.getElementById('mPS').textContent           = d.ps ? parseFloat(d.ps).toFixed(2) : '—';
-  document.getElementById('mEvEbitda').textContent     = d.evEbitda ? parseFloat(d.evEbitda).toFixed(2) : '—';
-  document.getElementById('mPB').textContent           = d.pb ? parseFloat(d.pb).toFixed(2) : '—';
-  document.getElementById('mFcfYield').textContent     = d.fcfYield ? fmtPct(d.fcfYield) : '—';
-  document.getElementById('mFcfPerSh').textContent     = d.fcfPerSh ? '$'+parseFloat(d.fcfPerSh).toFixed(2) : '—';
-  document.getElementById('mFCF').textContent          = d.fcfTTM ? '$'+fmt(d.fcfTTM) : '—';
-  document.getElementById('mSBC').textContent          = d.sbc != null ? '-'+fmtPct(d.sbc*100) : '—';
-  document.getElementById('mNetMargin').textContent    = d.margin != null ? fmtPct(d.margin*100) : '—';
-  document.getElementById('mOpMargin').textContent     = d.opMargin != null ? fmtPct(d.opMargin*100) : '—';
-  document.getElementById('mRevTTM').textContent       = d.revTTM ? '$'+fmt(d.revTTM) : '—';
-  document.getElementById('mEPS').textContent          = d.eps != null ? '$'+parseFloat(d.eps).toFixed(2) : '—';
-  document.getElementById('mROE').textContent          = d.roe != null ? fmtPct(d.roe*100) : '—';
-  document.getElementById('mCash').textContent         = d.cash != null ? '$'+fmt(d.cash) : '—';
-  document.getElementById('mDebt').textContent         = d.debt != null ? '$'+fmt(d.debt) : '—';
-  document.getElementById('mNet').textContent          = net != null ? '$'+fmt(net) : '—';
-  document.getElementById('mDE').textContent           = d.de != null ? parseFloat(d.de).toFixed(2)+'x' : '—';
-  document.getElementById('mDivYield').textContent     = d.divYield ? fmtPct(d.divYield) : '—';
-  document.getElementById('mPayoutRatio').textContent  = d.payout != null ? fmtPct(d.payout*100) : '—';
-  document.getElementById('mDivAmt').textContent       = d.divAmt ? '$'+parseFloat(d.divAmt).toFixed(2)+'/sh' : '—';
+
+  function setMV(id, text, srcKey) {
+    const el = document.getElementById(id);
+    if (!el) return;
+    if (showSrc && srcKey && s[srcKey] && API_META[s[srcKey]]) {
+      const m = API_META[s[srcKey]];
+      el.innerHTML = `${text}<span class="src-dot" style="background:${m.color}" title="${m.label}"></span>`;
+    } else {
+      el.textContent = text;
+    }
+  }
+
+  setMV('mMktCap',      d.mktCap ? '$'+fmt(d.mktCap) : '—',                          'mktCap');
+  setMV('mPE',          d.pe ? parseFloat(d.pe).toFixed(2) : '—',                    'pe');
+  setMV('mPS',          d.ps ? parseFloat(d.ps).toFixed(2) : '—',                    'ps');
+  setMV('mEvEbitda',    d.evEbitda ? parseFloat(d.evEbitda).toFixed(2) : '—',        'evEbitda');
+  setMV('mPB',          d.pb ? parseFloat(d.pb).toFixed(2) : '—',                    'pb');
+  setMV('mFcfYield',    d.fcfYield ? fmtPct(d.fcfYield) : '—',                      'fcfYield');
+  setMV('mFcfPerSh',    d.fcfPerSh ? '$'+parseFloat(d.fcfPerSh).toFixed(2) : '—',   'fcfPerSh');
+  setMV('mFCF',         d.fcfTTM ? '$'+fmt(d.fcfTTM) : '—',                          'fcfTTM');
+  setMV('mSBC',         d.sbc != null ? '-'+fmtPct(d.sbc*100) : '—',                'sbc');
+  setMV('mNetMargin',   d.margin != null ? fmtPct(d.margin*100) : '—',              'margin');
+  setMV('mOpMargin',    d.opMargin != null ? fmtPct(d.opMargin*100) : '—',          'opMargin');
+  setMV('mRevTTM',      d.revTTM ? '$'+fmt(d.revTTM) : '—',                          'revTTM');
+  setMV('mEPS',         d.eps != null ? '$'+parseFloat(d.eps).toFixed(2) : '—',      'eps');
+  setMV('mROE',         d.roe != null ? fmtPct(d.roe*100) : '—',                    'roe');
+  setMV('mCash',        d.cash != null ? '$'+fmt(d.cash) : '—',                      'cash');
+  setMV('mDebt',        d.debt != null ? '$'+fmt(d.debt) : '—',                      'debt');
+  setMV('mNet',         net != null ? '$'+fmt(net) : '—',                            'net');
+  setMV('mDE',          d.de != null ? parseFloat(d.de).toFixed(2)+'x' : '—',       'de');
+  setMV('mDivYield',    d.divYield ? fmtPct(d.divYield) : '—',                      'divYield');
+  setMV('mPayoutRatio', d.payout != null ? fmtPct(d.payout*100) : '—',             'payout');
+  setMV('mDivAmt',      d.divAmt ? '$'+parseFloat(d.divAmt).toFixed(2)+'/sh' : '—', 'divAmt');
+}
+
+// Attach a colored source badge to a chart card title (combo mode only)
+function setChartSourceBadge(canvasId, apiKey) {
+  if (activeApi !== 'combo' || !apiKey || !API_META[apiKey]) return;
+  const canvas = document.getElementById(canvasId);
+  if (!canvas) return;
+  const card = canvas.closest('.chart-card');
+  if (!card) return;
+  const titleEl = card.querySelector('.chart-card-title');
+  if (!titleEl) return;
+  // Remove existing badge
+  titleEl.querySelectorAll('.chart-src-badge').forEach(b => b.remove());
+  const m = API_META[apiKey];
+  const badge = document.createElement('span');
+  badge.className = 'chart-src-badge';
+  badge.title = m.label;
+  badge.style.cssText = `background:${m.color}18;color:${m.color};border:1px solid ${m.color}33;`;
+  badge.textContent = m.emoji + ' ' + m.label;
+  titleEl.appendChild(badge);
 }
 
 // ── P/E RATIO CHART ──
@@ -2017,8 +2409,10 @@ function showLoading(msg) {
   ['priceChart','revenueChart','fcfChart','netIncomeChart','epsChart','ebitdaChart','peChart'].forEach(id => {
     const c = document.getElementById(id); if (c) c.style.display = 'none';
   });
-  // Clear locked messages
+  // Clear locked messages and source badges
   document.querySelectorAll('.chart-locked').forEach(el => el.remove());
+  document.querySelectorAll('.chart-src-badge').forEach(el => el.remove());
+  document.querySelectorAll('.src-dot').forEach(el => el.remove());
 }
 function hideLoading() {
   clearSectionLoading(['priceLoading','revenueLoading','fcfLoading','netIncomeLoading','epsLoading','ebitdaLoading','peLoading']);
