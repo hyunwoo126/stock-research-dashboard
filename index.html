@@ -1489,14 +1489,14 @@ function buildFinnhubChartsFromData(xbrlReports, period = 'Annually') {
     return reports.map(r => ({
       label: r.year ? String(r.year) : (r.period || '').slice(0, 4),
       qLabel: (() => { const d = new Date(r.period||r.startDate||''); return `Q${Math.ceil((d.getMonth()+1)/3)} ${d.getFullYear()}`; })(),
-      revenue: getVal(r, 'ic', 'Revenues', 'RevenueFromContractWithCustomerExcludingAssessedTax', 'SalesRevenueNet'),
-      netIncome: getVal(r, 'ic', 'NetIncomeLoss', 'ProfitLoss'),
-      eps: getVal(r, 'ic', 'EarningsPerShareDiluted', 'EarningsPerShareBasic'),
-      opCF: getVal(r, 'cf', 'NetCashProvidedByUsedInOperatingActivities'),
-      capex: getVal(r, 'cf', 'PaymentsToAcquirePropertyPlantAndEquipment'),
-      tax: getVal(r, 'ic', 'IncomeTaxExpenseBenefit'),
-      interest: getVal(r, 'ic', 'InterestExpense'),
-      dep: getVal(r, 'cf', 'DepreciationDepletionAndAmortization', 'Depreciation'),
+      revenue: getVal(r, 'ic', 'us-gaap_RevenueFromContractWithCustomerExcludingAssessedTax', 'us-gaap_Revenues', 'us-gaap_SalesRevenueNet', 'Revenue'),
+      netIncome: getVal(r, 'ic', 'us-gaap_NetIncomeLoss', 'us-gaap_ProfitLoss', 'NetIncomeLoss'),
+      eps: getVal(r, 'ic', 'us-gaap_EarningsPerShareDiluted', 'us-gaap_EarningsPerShareBasic', 'EarningsPerShareDiluted'),
+      opCF: getVal(r, 'cf', 'us-gaap_NetCashProvidedByUsedInOperatingActivities', 'NetCashProvidedByUsedInOperatingActivities'),
+      capex: getVal(r, 'cf', 'us-gaap_PaymentsToAcquirePropertyPlantAndEquipment', 'PaymentsToAcquirePropertyPlantAndEquipment'),
+      tax: getVal(r, 'ic', 'us-gaap_IncomeTaxExpenseBenefit', 'IncomeTaxExpenseBenefit'),
+      interest: getVal(r, 'ic', 'us-gaap_InterestExpense', 'InterestExpense'),
+      dep: getVal(r, 'cf', 'us-gaap_DepreciationDepletionAndAmortization', 'us-gaap_Depreciation', 'DepreciationDepletionAndAmortization'),
     }));
   }
 
