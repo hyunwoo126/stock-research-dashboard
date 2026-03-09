@@ -131,13 +131,17 @@
   /* CHART MODAL */
   .chart-modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.45); z-index: 900; display: flex; align-items: center; justify-content: center; opacity: 0; pointer-events: none; transition: opacity .2s; }
   .chart-modal-overlay.open { opacity: 1; pointer-events: all; }
-  .chart-modal { background: var(--card); border-radius: 12px; box-shadow: 0 24px 60px rgba(0,0,0,0.18); width: min(860px, 94vw); padding: 24px; position: relative; transform: scale(0.96); transition: transform .2s; }
+  .chart-modal { background: var(--card); border-radius: 12px; box-shadow: 0 24px 60px rgba(0,0,0,0.18); width: min(1100px, 96vw); padding: 28px; position: relative; transform: scale(0.96); transition: transform .2s; }
   .chart-modal-overlay.open .chart-modal { transform: scale(1); }
-  .chart-modal-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 20px; }
-  .chart-modal-title { font-size: 16px; font-weight: 600; color: var(--text); }
+  .chart-modal-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; }
+  .chart-modal-title { font-size: 17px; font-weight: 600; color: var(--text); }
   .chart-modal-close { width: 30px; height: 30px; border-radius: 6px; border: 1px solid var(--border); background: transparent; cursor: pointer; font-size: 16px; color: var(--muted); display: flex; align-items: center; justify-content: center; transition: background .12s; }
   .chart-modal-close:hover { background: var(--bg3); color: var(--text); }
-  .chart-modal-body { height: 380px; }
+  .chart-modal-toolbar { display: flex; gap: 4px; margin-bottom: 18px; padding: 3px; background: var(--bg3); border-radius: 8px; width: fit-content; }
+  .modal-period-btn { padding: 5px 16px; border-radius: 5px; font-size: 12px; font-weight: 500; font-family: 'Inter', sans-serif; cursor: pointer; border: none; background: transparent; color: var(--muted); transition: all .15s; }
+  .modal-period-btn:hover { background: rgba(0,0,0,0.05); color: var(--text); }
+  .modal-period-btn.active { background: var(--blue); color: #fff; }
+  .chart-modal-body { height: 500px; }
   /* DCF */
   .full-card { background: var(--card); border: 1px solid var(--border); border-radius: 8px; overflow: hidden; margin-bottom: 14px; }
   .full-card-header { display: flex; align-items: center; justify-content: space-between; padding: 14px 20px; border-bottom: 1px solid var(--border); }
@@ -2446,116 +2450,283 @@ loadIndices();
 
 // ── CHART MODAL ──
 let modalChartInst = null;
+let modalActiveCanvasId = null;
+let modalActivePeriod = 'Annually';
+
+const FINANCIAL_CHART_IDS = new Set(['revenueChart','fcfChart','netIncomeChart','epsChart','ebitdaChart']);
+
+// Map canvas ID → { label, color, isLine, accessor }
+const MODAL_CHART_META = {
+  revenueChart:   { label: 'Revenue',        color: '#3b82f6', isLine: false, key: 'revenue' },
+  fcfChart:       { label: 'Free Cash Flow', color: '#10b981', isLine: false, key: 'fcf'     },
+  netIncomeChart: { label: 'Net Income',     color: '#22c55e', isLine: false, key: 'netIncome'},
+  epsChart:       { label: 'EPS',            color: '#f59e0b', isLine: true,  key: 'eps'     },
+  ebitdaChart:    { label: 'EBITDA',         color: '#8b5cf6', isLine: false, key: 'ebitda'  },
+};
 
 function openChartModal(title, sourceCanvasId) {
   const overlay = document.getElementById('chartModalOverlay');
+  modalActiveCanvasId = sourceCanvasId;
   document.getElementById('chartModalTitle').textContent = title + ' — ' + currentTicker;
 
-  // Destroy previous modal chart
+  const isFinancial = FINANCIAL_CHART_IDS.has(sourceCanvasId);
+  const toolbar = document.getElementById('chartModalToolbar');
+  toolbar.style.display = isFinancial ? 'flex' : 'none';
+
+  // Sync modal period buttons to whatever period the main page is on
+  if (isFinancial) {
+    const activePeriodBtn = document.querySelector('.period-btn.active');
+    modalActivePeriod = activePeriodBtn ? activePeriodBtn.textContent.trim() : 'Annually';
+    document.querySelectorAll('.modal-period-btn').forEach(b => {
+      b.classList.toggle('active', b.textContent.trim() === modalActivePeriod);
+    });
+  }
+
+  renderModalChart(sourceCanvasId);
+  overlay.classList.add('open');
+}
+
+function renderModalChart(sourceCanvasId) {
   if (modalChartInst) { modalChartInst.destroy(); modalChartInst = null; }
 
+  const modalCanvas = document.getElementById('chartModalCanvas');
+  const isFinancial = FINANCIAL_CHART_IDS.has(sourceCanvasId);
+
+  // For financial charts: render directly from lastRawData so we never touch main-page canvases
+  if (isFinancial && lastRawData) {
+    const meta = MODAL_CHART_META[sourceCanvasId];
+    let labels = [], values = [];
+
+    if (lastRawData.api === 'finnhub') {
+      const xbrl = lastRawData.xbrlReports;
+      // Inline extractMetrics (same logic as buildFinnhubChartsFromData)
+      function getValM(report, section, ...concepts) {
+        const items = report.report?.[section] || [];
+        for (const concept of concepts) {
+          const found = items.find(i => i.concept === concept || (i.label && i.label.toLowerCase().includes(concept.toLowerCase())));
+          if (found && found.value != null) return found.value;
+        }
+        return null;
+      }
+      function extractM(reports) {
+        return reports.map(r => ({
+          label: r.year ? String(r.year) : (r.period||'').slice(0,4),
+          qLabel: (() => { const d = new Date(r.period||r.startDate||''); return `Q${Math.ceil((d.getMonth()+1)/3)} ${d.getFullYear()}`; })(),
+          revenue:   getValM(r,'ic','us-gaap_RevenueFromContractWithCustomerExcludingAssessedTax','us-gaap_Revenues','us-gaap_SalesRevenueNet','Revenue'),
+          netIncome: getValM(r,'ic','us-gaap_NetIncomeLoss','us-gaap_ProfitLoss','NetIncomeLoss'),
+          eps:       getValM(r,'ic','us-gaap_EarningsPerShareDiluted','us-gaap_EarningsPerShareBasic','EarningsPerShareDiluted'),
+          opCF:      getValM(r,'cf','us-gaap_NetCashProvidedByUsedInOperatingActivities','NetCashProvidedByUsedInOperatingActivities'),
+          capex:     getValM(r,'cf','us-gaap_PaymentsToAcquirePropertyPlantAndEquipment','PaymentsToAcquirePropertyPlantAndEquipment'),
+          tax:       getValM(r,'ic','us-gaap_IncomeTaxExpenseBenefit','IncomeTaxExpenseBenefit'),
+          interest:  getValM(r,'ic','us-gaap_InterestExpense','InterestExpense'),
+          dep:       getValM(r,'cf','us-gaap_DepreciationDepletionAndAmortization','us-gaap_Depreciation','DepreciationDepletionAndAmortization'),
+        }));
+      }
+      const getValue = (m) => {
+        if (meta.key === 'fcf')    return computeFCF(m.opCF, m.capex);
+        if (meta.key === 'ebitda') return computeEBITDA(m.netIncome, m.tax, m.interest, m.dep);
+        return m[meta.key];
+      };
+
+      if (modalActivePeriod === 'Annually') {
+        const metrics = extractM(xbrl.annual);
+        labels = metrics.map(m => m.label);
+        values = metrics.map(getValue);
+      } else if (modalActivePeriod === 'Quarterly') {
+        const metrics = extractM(xbrl.quarterly);
+        labels = metrics.map(m => m.qLabel);
+        values = metrics.map(getValue);
+      } else if (modalActivePeriod === 'Quarterly (TTM)') {
+        const metrics = extractM(xbrl.quarterly);
+        const raw = metrics.map(getValue);
+        const ttm = toTTMWindow(raw);
+        labels = metrics.slice(3).map(m => m.qLabel);
+        values = ttm.slice(3);
+      }
+
+    } else if (lastRawData.api === 'alphavantage') {
+      // Pull from AV data using same accessors as buildAlphaVantageCharts
+      const { incomeRaw, cashFlowRaw, earningsRaw } = lastRawData;
+      const safe = v => { const n = parseFloat(v); return isNaN(n) ? null : n; };
+      const incomeA  = incomeRaw?.annualReports   || [];
+      const incomeQ  = incomeRaw?.quarterlyReports || [];
+      const cashA    = cashFlowRaw?.annualReports   || [];
+      const cashQ    = cashFlowRaw?.quarterlyReports || [];
+      const earnQ    = earningsRaw?.quarterlyEarnings || [];
+
+      const getAVVal = (incomeArr, cashArr, idx) => {
+        const inc = incomeArr[idx] || {}, cf = cashArr[idx] || {};
+        const opCF  = safe(cf.operatingCashflow);
+        const capex = safe(cf.capitalExpenditures);
+        const ni    = safe(inc.netIncome);
+        const tax   = safe(inc.incomeTaxExpense);
+        const int_  = safe(inc.interestExpense);
+        const dep   = safe(cf.depreciationDepletionAndAmortization);
+        if (meta.key === 'revenue')   return safe(inc.totalRevenue);
+        if (meta.key === 'netIncome') return ni;
+        if (meta.key === 'fcf')       return computeFCF(opCF, capex);
+        if (meta.key === 'ebitda')    return computeEBITDA(ni, tax, int_, dep);
+        if (meta.key === 'eps')       return null; // handled separately
+        return null;
+      };
+
+      if (modalActivePeriod === 'Annually') {
+        const arr = incomeA.slice().reverse().slice(-10);
+        labels = arr.map(r => r.fiscalDateEnding?.slice(0,4) || '');
+        if (meta.key === 'eps') {
+          const earnA = earningsRaw?.annualEarnings || [];
+          const earnRev = earnA.slice().reverse().slice(-10);
+          labels = earnRev.map(e => e.fiscalDateEnding?.slice(0,4)||'');
+          values = earnRev.map(e => safe(e.reportedEPS));
+        } else {
+          values = arr.map((_, i) => getAVVal(arr, cashA.slice().reverse().slice(-10), i));
+        }
+      } else if (modalActivePeriod === 'Quarterly') {
+        const arr = incomeQ.slice().reverse().slice(-20);
+        const cashArr2 = cashQ.slice().reverse().slice(-20);
+        labels = arr.map(r => { const d = new Date(r.fiscalDateEnding||''); return `Q${Math.ceil((d.getMonth()+1)/3)} ${d.getFullYear()}`; });
+        if (meta.key === 'eps') {
+          const earnRev = earnQ.slice().reverse().slice(-20);
+          labels = earnRev.map(e => { const d = new Date(e.fiscalDateEnding||''); return `Q${Math.ceil((d.getMonth()+1)/3)} ${d.getFullYear()}`; });
+          values = earnRev.map(e => safe(e.reportedEPS));
+        } else {
+          values = arr.map((_, i) => getAVVal(arr, cashArr2, i));
+        }
+      } else if (modalActivePeriod === 'Quarterly (TTM)') {
+        const arr = incomeQ.slice().reverse().slice(-20);
+        const cashArr2 = cashQ.slice().reverse().slice(-20);
+        const qLabels = arr.map(r => { const d = new Date(r.fiscalDateEnding||''); return `Q${Math.ceil((d.getMonth()+1)/3)} ${d.getFullYear()}`; });
+        let raw;
+        if (meta.key === 'eps') {
+          const earnRev = earnQ.slice().reverse().slice(-20);
+          raw = earnRev.map(e => safe(e.reportedEPS));
+        } else {
+          raw = arr.map((_, i) => getAVVal(arr, cashArr2, i));
+        }
+        const ttm = toTTMWindow(raw);
+        labels = qLabels.slice(3);
+        values = ttm.slice(3);
+      }
+    }
+
+    // Build the modal chart directly
+    const hasData = values.some(v => v != null);
+    const color = meta.color;
+    const isLine = meta.isLine;
+
+    const fmtVal = v => {
+      if (v == null) return '—';
+      if (isLine) return '$' + v.toFixed(2);
+      if (Math.abs(v) >= 1e9) return '$' + (v/1e9).toFixed(2) + 'B';
+      if (Math.abs(v) >= 1e6) return '$' + (v/1e6).toFixed(2) + 'M';
+      return '$' + v.toFixed(2);
+    };
+    const fmtAxis = v => {
+      if (isLine) return '$' + v.toFixed(2);
+      if (Math.abs(v) >= 1e12) return '$' + (v/1e12).toFixed(1) + 'T';
+      if (Math.abs(v) >= 1e9)  return '$' + (v/1e9).toFixed(1) + 'B';
+      if (Math.abs(v) >= 1e6)  return '$' + (v/1e6).toFixed(1) + 'M';
+      if (Math.abs(v) >= 1e3)  return '$' + (v/1e3).toFixed(0) + 'K';
+      return '$' + v.toFixed(2);
+    };
+
+    modalChartInst = new Chart(modalCanvas, {
+      type: isLine ? 'line' : 'bar',
+      data: {
+        labels,
+        datasets: [{
+          label: meta.label,
+          data: values,
+          backgroundColor: isLine ? 'transparent' : color + '33',
+          borderColor: color,
+          borderWidth: isLine ? 2 : 1,
+          borderRadius: isLine ? 0 : 5,
+          fill: isLine,
+          tension: 0.35,
+          pointRadius: isLine ? 4 : 0,
+          pointBackgroundColor: color,
+        }]
+      },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        animation: { duration: 250 },
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            backgroundColor: '#fff', borderColor: '#e1e4e8', borderWidth: 1,
+            titleColor: '#111827', bodyColor: '#374151', padding: 10,
+            callbacks: { label: ctx => fmtVal(ctx.parsed.y) }
+          }
+        },
+        scales: {
+          x: { display: true, grid: { display: false }, border: { display: false }, ticks: { font: { size: 11, family: 'Inter' }, color: '#6b7280', maxTicksLimit: 12 } },
+          y: { display: true, grid: { color: 'rgba(0,0,0,0.06)' }, border: { display: false }, ticks: { font: { size: 11, family: 'Inter' }, color: '#6b7280', callback: fmtAxis } }
+        }
+      }
+    });
+
+    if (!hasData) {
+      modalChartInst.destroy(); modalChartInst = null;
+      const ctx = modalCanvas.getContext('2d');
+      ctx.clearRect(0,0,modalCanvas.width,modalCanvas.height);
+      modalChartInst = new Chart(modalCanvas, { type:'line', data:{labels:[],datasets:[]}, options:{ responsive:true, maintainAspectRatio:false, plugins:{ legend:{display:false}, tooltip:{enabled:false}, title:{display:true,text:'No data available',color:'#6b7280',font:{size:14}} }, scales:{x:{display:false},y:{display:false}} } });
+    }
+    return;
+  }
+
+  // Non-financial charts (Price, P/E): clone from the source canvas as before
   const sourceCanvas = document.getElementById(sourceCanvasId);
   const sourceChart = Chart.getChart(sourceCanvas);
 
-  const modalCanvas = document.getElementById('chartModalCanvas');
-
   if (sourceChart) {
-    // Clone the chart config with axes enabled and larger size
     const cfg = sourceChart.config;
     const newOptions = JSON.parse(JSON.stringify(cfg.options || {}));
-
-    // Detect chart type by canvas ID to pick the right formatters
     const isPE    = sourceCanvasId === 'peChart';
     const isPrice = sourceCanvasId === 'priceChart';
 
     const fmtAxisY = isPE
       ? v => v.toFixed(0) + 'x'
-      : isPrice
-        ? v => '$' + v.toFixed(0)
-        : v => {
-            if (Math.abs(v) >= 1e12) return '$' + (v/1e12).toFixed(1) + 'T';
-            if (Math.abs(v) >= 1e9)  return '$' + (v/1e9).toFixed(1) + 'B';
-            if (Math.abs(v) >= 1e6)  return '$' + (v/1e6).toFixed(1) + 'M';
-            if (Math.abs(v) >= 1e3)  return '$' + (v/1e3).toFixed(0) + 'K';
-            return '$' + v.toFixed(2);
-          };
-
+      : isPrice ? v => '$' + v.toFixed(0)
+      : v => {
+          if (Math.abs(v) >= 1e9) return '$' + (v/1e9).toFixed(1) + 'B';
+          if (Math.abs(v) >= 1e6) return '$' + (v/1e6).toFixed(1) + 'M';
+          return '$' + v.toFixed(2);
+        };
     const fmtTooltip = isPE
-      ? ctx => {
-          const v = ctx.parsed.y;
-          const label = ctx.dataset.label || '';
-          return label ? label.startsWith('Avg') ? 'Avg: ' + v.toFixed(1) + 'x' : 'P/E: ' + v.toFixed(1) + 'x' : v.toFixed(1) + 'x';
-        }
-      : isPrice
-        ? ctx => '$' + ctx.parsed.y.toFixed(2)
-        : ctx => {
-            const v = ctx.parsed.y;
-            if (Math.abs(v) >= 1e9)  return '$' + (v/1e9).toFixed(2) + 'B';
-            if (Math.abs(v) >= 1e6)  return '$' + (v/1e6).toFixed(2) + 'M';
-            return '$' + v.toFixed(2);
-          };
+      ? ctx => { const v = ctx.parsed.y; const l = ctx.dataset.label||''; return l.startsWith('Avg') ? 'Avg: '+v.toFixed(1)+'x' : 'P/E: '+v.toFixed(1)+'x'; }
+      : isPrice ? ctx => '$' + ctx.parsed.y.toFixed(2)
+      : ctx => { const v = ctx.parsed.y; if (Math.abs(v)>=1e9) return '$'+(v/1e9).toFixed(2)+'B'; if (Math.abs(v)>=1e6) return '$'+(v/1e6).toFixed(2)+'M'; return '$'+v.toFixed(2); };
 
-    // Enable axes
-    newOptions.scales = newOptions.scales || {};
-    newOptions.scales.x = {
-      display: true,
-      grid: { color: 'rgba(0,0,0,0.06)' },
-      ticks: { font: { size: 11, family: 'Inter' }, color: '#6b7280', maxTicksLimit: 10 }
-    };
-    newOptions.scales.y = {
-      display: true,
-      grid: { color: 'rgba(0,0,0,0.06)' },
-      ticks: { font: { size: 11, family: 'Inter' }, color: '#6b7280', callback: fmtAxisY }
+    newOptions.scales = {
+      x: { display:true, grid:{color:'rgba(0,0,0,0.06)'}, ticks:{font:{size:11,family:'Inter'},color:'#6b7280',maxTicksLimit:10} },
+      y: { display:true, grid:{color:'rgba(0,0,0,0.06)'}, ticks:{font:{size:11,family:'Inter'},color:'#6b7280',callback:fmtAxisY} }
     };
     newOptions.plugins = newOptions.plugins || {};
-    // Show legend for P/E (avg line) but hide for everything else
-    newOptions.plugins.legend = isPE
-      ? { display: true, position: 'top', labels: { font: { size: 11, family: 'Inter' }, color: '#6b7280', boxWidth: 12, padding: 12 } }
-      : { display: false };
-    newOptions.plugins.tooltip = {
-      backgroundColor: '#fff',
-      borderColor: '#e1e4e8',
-      borderWidth: 1,
-      titleColor: '#111827',
-      bodyColor: '#6b7280',
-      padding: 10,
-      displayColors: isPE,
-      callbacks: { label: fmtTooltip }
-    };
+    newOptions.plugins.legend = isPE ? { display:true, position:'top', labels:{font:{size:11,family:'Inter'},color:'#6b7280',boxWidth:12,padding:12} } : { display:false };
+    newOptions.plugins.tooltip = { backgroundColor:'#fff', borderColor:'#e1e4e8', borderWidth:1, titleColor:'#111827', bodyColor:'#6b7280', padding:10, displayColors:isPE, callbacks:{label:fmtTooltip} };
     newOptions.maintainAspectRatio = false;
     newOptions.responsive = true;
     newOptions.animation = { duration: 300 };
 
-    modalChartInst = new Chart(modalCanvas, {
-      type: cfg.type,
-      data: JSON.parse(JSON.stringify(cfg.data)),
-      options: newOptions
-    });
+    modalChartInst = new Chart(modalCanvas, { type: cfg.type, data: JSON.parse(JSON.stringify(cfg.data)), options: newOptions });
   } else {
-    // No chart (locked) — show message
-    const ctx = modalCanvas.getContext('2d');
-    ctx.clearRect(0, 0, modalCanvas.width, modalCanvas.height);
-    modalChartInst = new Chart(modalCanvas, {
-      type: 'line',
-      data: { labels: [], datasets: [] },
-      options: {
-        responsive: true, maintainAspectRatio: false,
-        plugins: {
-          legend: { display: false },
-          tooltip: { enabled: false },
-          title: { display: true, text: 'Historical data requires an FMP paid plan', color: '#6b7280', font: { size: 14 } }
-        },
-        scales: { x: { display: false }, y: { display: false } }
-      }
-    });
+    modalChartInst = new Chart(modalCanvas, { type:'line', data:{labels:[],datasets:[]}, options:{ responsive:true, maintainAspectRatio:false, plugins:{legend:{display:false},tooltip:{enabled:false},title:{display:true,text:'No chart data available',color:'#6b7280',font:{size:14}}}, scales:{x:{display:false},y:{display:false}} } });
   }
-
-  overlay.classList.add('open');
 }
 
 function closeChartModal() {
   document.getElementById('chartModalOverlay').classList.remove('open');
   if (modalChartInst) { modalChartInst.destroy(); modalChartInst = null; }
+}
+
+function modalPeriodClick(btn, period) {
+  modalActivePeriod = period;
+  document.querySelectorAll('.modal-period-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  // Sync main page period buttons too
+  document.querySelectorAll('.period-btn').forEach(b => b.classList.toggle('active', b.textContent.trim() === period));
+  // Re-render modal chart directly from data — does NOT touch main page charts
+  if (modalActiveCanvasId) renderModalChart(modalActiveCanvasId);
 }
 
 // Close on overlay click — deferred since modal element is after this script
@@ -2575,6 +2746,11 @@ document.addEventListener('keydown', e => { if (e.key === 'Escape') closeChartMo
     <div class="chart-modal-header">
       <div class="chart-modal-title" id="chartModalTitle">Chart</div>
       <button class="chart-modal-close" onclick="closeChartModal()">✕</button>
+    </div>
+    <div class="chart-modal-toolbar" id="chartModalToolbar" style="display:none">
+      <button class="modal-period-btn" onclick="modalPeriodClick(this,'Quarterly')">Quarterly</button>
+      <button class="modal-period-btn" onclick="modalPeriodClick(this,'Quarterly (TTM)')">Quarterly (TTM)</button>
+      <button class="modal-period-btn active" onclick="modalPeriodClick(this,'Annually')">Annually</button>
     </div>
     <div class="chart-modal-body">
       <canvas id="chartModalCanvas" style="width:100%;height:100%"></canvas>
