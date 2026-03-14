@@ -124,6 +124,9 @@
   .trend-badge.dn { background: rgba(207,34,46,0.1); color: var(--red); }
   .chart-expand-btn { width: 24px; height: 24px; display: flex; align-items: center; justify-content: center; cursor: pointer; color: var(--muted2); border-radius: 4px; background: transparent; border: none; font-size: 13px; transition: background .12s; }
   .chart-expand-btn:hover { background: var(--bg3); }
+  .price-range-btn { padding: 2px 7px; border-radius: 4px; font-size: 10px; font-weight: 500; font-family: 'Inter', sans-serif; cursor: pointer; border: none; background: transparent; color: var(--muted); transition: all .13s; line-height: 1.6; }
+  .price-range-btn:hover { background: rgba(0,0,0,0.05); color: var(--text); }
+  .price-range-btn.active { background: var(--blue); color: #fff; }
   .chart-body { padding: 0 14px 14px; }
   .chart-locked { display: flex; flex-direction: column; align-items: center; justify-content: center; height: 155px; gap: 8px; color: var(--muted); font-size: 12px; }
   .chart-locked-icon { font-size: 18px; opacity: 0.5; }
@@ -141,6 +144,9 @@
   .modal-period-btn { padding: 5px 16px; border-radius: 5px; font-size: 12px; font-weight: 500; font-family: 'Inter', sans-serif; cursor: pointer; border: none; background: transparent; color: var(--muted); transition: all .15s; }
   .modal-period-btn:hover { background: rgba(0,0,0,0.05); color: var(--text); }
   .modal-period-btn.active { background: var(--blue); color: #fff; }
+  .modal-range-btn { padding: 4px 13px; border-radius: 5px; font-size: 12px; font-weight: 500; font-family: 'Inter', sans-serif; cursor: pointer; border: none; background: transparent; color: var(--muted); transition: all .15s; }
+  .modal-range-btn:hover { background: rgba(0,0,0,0.05); color: var(--text); }
+  .modal-range-btn.active { background: var(--blue); color: #fff; }
   .chart-modal-body { height: 500px; }
   /* DCF */
   .full-card { background: var(--card); border: 1px solid var(--border); border-radius: 8px; overflow: hidden; margin-bottom: 14px; }
@@ -249,10 +255,11 @@
       <div style="position:relative">
         <select id="apiSelector" onchange="onApiChange()" style="appearance:none;-webkit-appearance:none;background:var(--bg3);border:1px solid var(--border);border-radius:6px;padding:5px 30px 5px 10px;font-size:12px;font-weight:500;font-family:'Inter',sans-serif;color:var(--text);cursor:pointer;outline:none;transition:border-color .15s;" title="Select data provider">
           <option value="combo">⚡ Combo</option>
-          <option value="fmp">🟦 FMP</option>
+          <option value="fmp">🟤 FMP</option>
           <option value="finnhub">🟠 Finnhub</option>
           <option value="alphavantage">🟢 Alpha Vantage</option>
           <option value="twelvedata">🟣 Twelve Data</option>
+          <option value="tiingo">🔵 Tiingo</option>
         </select>
         <span style="position:absolute;right:8px;top:50%;transform:translateY(-50%);pointer-events:none;font-size:10px;color:var(--muted)">▾</span>
       </div>
@@ -345,7 +352,16 @@
         <div class="chart-card" id="priceCard" data-title="Price" onclick="openChartModal('Price','priceChart')">
           <div class="chart-card-header">
             <div class="chart-card-title">Price <span class="trend-badge up" id="priceTrendBadge">—</span></div>
-            <button class="chart-expand-btn" id="priceExpandBtn" onclick="event.stopPropagation();openChartModal('Price','priceChart')">⤢</button>
+            <div style="display:flex;align-items:center;gap:4px" onclick="event.stopPropagation()">
+              <div id="priceRangeBar" style="display:none;background:var(--bg3);border-radius:6px;padding:2px;gap:2px;align-items:center">
+                <button class="price-range-btn active" data-range="1Y"  onclick="priceRangeClick(this)">1Y</button>
+                <button class="price-range-btn"        data-range="5Y"  onclick="priceRangeClick(this)">5Y</button>
+                <button class="price-range-btn"        data-range="10Y" onclick="priceRangeClick(this)">10Y</button>
+                <button class="price-range-btn"        data-range="20Y" onclick="priceRangeClick(this)">20Y</button>
+                <button class="price-range-btn"        data-range="MAX" onclick="priceRangeClick(this)">MAX</button>
+              </div>
+              <button class="chart-expand-btn" id="priceExpandBtn" onclick="openChartModal('Price','priceChart')">⤢</button>
+            </div>
           </div>
           <div class="chart-body" id="priceChartWrap"><canvas id="priceChart" height="160"></canvas><div class="section-loading" id="priceLoading" style="height:160px"><div class="section-spinner"></div><span class="section-loading-text">Loading price data…</span></div></div>
         </div>
@@ -466,16 +482,22 @@ const APIS = {
     key: '',
     base: 'https://financialmodelingprep.com', // use FMP base for cache timestamp lookup
     label: 'Combo'
+  },
+  tiingo: {
+    key: '1f449cc5cad90df99c7c77a4cf0871d06c9cd6fb',
+    base: 'https://api.tiingo.com',
+    label: 'Tiingo'
   }
 };
 let activeApi = 'combo';
 
 // ── API SOURCE META (used for combo badges) ──
 const API_META = {
-  fmp:          { label: 'FMP',      emoji: '🟦', color: '#2563eb' },
+  fmp:          { label: 'FMP',      emoji: '🟤', color: '#92400e' },
   finnhub:      { label: 'Finnhub',  emoji: '🟠', color: '#f97316' },
   alphavantage: { label: 'AV',       emoji: '🟢', color: '#16a34a' },
   twelvedata:   { label: 'TD',       emoji: '🟣', color: '#7c3aed' },
+  tiingo:       { label: 'Tiingo',   emoji: '🔵', color: '#0ea5e9' },
 };
 
 
@@ -526,6 +548,27 @@ function cacheGet(url) {
     const { data, ts } = JSON.parse(raw);
     if (Date.now() - ts > CACHE_TTL) return null;
     return { data, ts };
+  } catch(e) { return null; }
+}
+
+// Find the most-recently cached entry whose key contains all given fragments.
+// Used by combo mode for date-sensitive URLs (earnings, news) where the exact
+// date params change daily and would otherwise cause a permanent cache miss.
+function cachedByPrefix(...fragments) {
+  if (forceRefresh) return null;
+  try {
+    let best = null;
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i);
+      if (!k || !k.startsWith('qcache_')) continue;
+      if (!fragments.every(f => k.includes(f))) continue;
+      try {
+        const { data, ts } = JSON.parse(localStorage.getItem(k));
+        if (Date.now() - ts > CACHE_TTL) continue;
+        if (!best || ts > best.ts) best = { data, ts };
+      } catch(e) {}
+    }
+    return best ? best.data : null;
   } catch(e) { return null; }
 }
 
@@ -612,7 +655,13 @@ async function apiFetch(url) {
       throw new Error(msg);
     }
     const data = await res.json();
-    cacheSet(url, data);
+    // Never cache AV rate-limit/error responses (Note, Information, message fields)
+    // so they don't poison the combo cache
+    const isAvError = data && typeof data === 'object' &&
+      (data['Note'] || data['Information'] || data['message']) &&
+      !data['Global Quote'] && !data['Symbol'] && !data['quarterlyReports'] &&
+      !data['quarterlyEarnings'] && !data['Time Series (Daily)'];
+    if (!isAvError) cacheSet(url, data);
     return data;
   } catch(e) {
     // If we bypassed cache due to forceRefresh, fall back to stale cache rather than failing hard
@@ -688,6 +737,8 @@ async function loadTicker() {
     ? `${APIS.alphavantage.base}/query?function=OVERVIEW&symbol=${ticker}&apikey=${APIS.alphavantage.key}`
     : activeApi === 'twelvedata'
     ? `${APIS.twelvedata.base}/quote?symbol=${ticker}&apikey=${APIS.twelvedata.key}`
+    : activeApi === 'tiingo'
+    ? `${APIS.tiingo.base}/tiingo/daily/${ticker}?token=${APIS.tiingo.key}`
     : activeApi === 'combo'
     ? `${APIS.fmp.base}/stable/profile?symbol=${ticker}&apikey=${APIS.fmp.key}`
     : `${APIS.finnhub.base}/stock/profile2?symbol=${ticker}&token=${APIS.finnhub.key}`;
@@ -706,6 +757,8 @@ async function loadTicker() {
       await loadTickerAlphaVantage(ticker);
     } else if (activeApi === 'twelvedata') {
       await loadTickerTwelveData(ticker);
+    } else if (activeApi === 'tiingo') {
+      await loadTickerTiingo(ticker);
     } else if (activeApi === 'combo') {
       await loadTickerCombo(ticker);
     } else {
@@ -738,25 +791,34 @@ async function loadTickerCombo(ticker) {
   const fmp = APIS.fmp, fh = APIS.finnhub, av = APIS.alphavantage, td = APIS.twelvedata;
 
   // ── Helper: read a URL from cache only (null = not cached) ──
+  // Also returns null for cached AV rate-limit responses (Note/Information/message)
+  // so stale error caches don't silently block combo from showing data.
   function cached(url) {
     const hit = cacheGet(url);
-    return hit ? hit.data : null;
+    if (!hit) return null;
+    const d = hit.data;
+    // Treat AV error envelopes as cache miss
+    if (d && typeof d === 'object' &&
+        (d['Note'] || d['Information'] || d['message']) &&
+        !d['Global Quote'] && !d['Symbol'] && !d['quarterlyReports'] &&
+        !d['quarterlyEarnings'] && !d['Time Series (Daily)']) return null;
+    return d;
   }
 
   // ── Read all available cached data ──
   const fmpProfile   = cached(`${fmp.base}/stable/profile?symbol=${ticker}&apikey=${fmp.key}`);
   const fmpMetrics   = cached(`${fmp.base}/stable/key-metrics-ttm?symbol=${ticker}&apikey=${fmp.key}`);
   const fmpQuote     = cached(`${fmp.base}/stable/quote?symbol=${ticker}&apikey=${fmp.key}`);
-  const fmpEarnings  = cached(`${fmp.base}/stable/earnings-calendar?from=${todayPlus(0)}&to=${todayPlus(60)}&apikey=${fmp.key}`);
+  const fmpEarnings  = cachedByPrefix('financialmodelingprep.com', 'earnings-calendar');
   const fmpPrice     = cached(`${fmp.base}/stable/historical-price-eod/light?symbol=${ticker}&limit=365&apikey=${fmp.key}`);
 
   const fhProfile    = cached(`${fh.base}/stock/profile2?symbol=${ticker}&token=${fh.key}`);
   const fhQuote      = cached(`${fh.base}/quote?symbol=${ticker}&token=${fh.key}`);
   const fhMetrics    = cached(`${fh.base}/stock/metric?symbol=${ticker}&metric=all&token=${fh.key}`);
-  const fhEarnings   = cached(`${fh.base}/calendar/earnings?from=${todayPlus(0)}&to=${todayPlus(60)}&token=${fh.key}`);
+  const fhEarnings   = cachedByPrefix('finnhub.io', 'calendar/earnings');
   const fhXbrlAnnual = cached(`${fh.base}/stock/financials-reported?symbol=${ticker}&freq=annual&token=${fh.key}`);
   const fhXbrlQtr    = cached(`${fh.base}/stock/financials-reported?symbol=${ticker}&freq=quarterly&token=${fh.key}`);
-  const fhNews       = cached(`${fh.base}/company-news?symbol=${ticker}&from=${todayPlus(-30)}&to=${todayPlus(0)}&token=${fh.key}`);
+  const fhNews       = cachedByPrefix('finnhub.io', 'company-news', ticker);
   const fhRecs       = cached(`${fh.base}/stock/recommendation?symbol=${ticker}&token=${fh.key}`);
 
   const avOverview   = cached(`${av.base}/query?function=OVERVIEW&symbol=${ticker}&apikey=${av.key}`);
@@ -764,14 +826,21 @@ async function loadTickerCombo(ticker) {
   const avIncome     = cached(`${av.base}/query?function=INCOME_STATEMENT&symbol=${ticker}&apikey=${av.key}`);
   const avCashFlow   = cached(`${av.base}/query?function=CASH_FLOW&symbol=${ticker}&apikey=${av.key}`);
   const avEarnings   = cached(`${av.base}/query?function=EARNINGS&symbol=${ticker}&apikey=${av.key}`);
-  const avPriceRaw   = cached(`${av.base}/query?function=TIME_SERIES_DAILY&symbol=${ticker}&outputsize=full&apikey=${av.key}`);
+  const avPriceRaw   = cached(`${av.base}/query?function=TIME_SERIES_DAILY&symbol=${ticker}&outputsize=full&apikey=${av.key}`)
+                    ?? cached(`${av.base}/query?function=TIME_SERIES_DAILY&symbol=${ticker}&outputsize=compact&apikey=${av.key}`);
 
   const tdQuote      = cached(`${td.base}/quote?symbol=${ticker}&apikey=${td.key}`);
   const tdLogo       = cached(`${td.base}/logo?symbol=${ticker}&apikey=${td.key}`);
   const tdPriceSeries= cached(`${td.base}/time_series?symbol=${ticker}&interval=1day&outputsize=365&apikey=${td.key}`);
 
+  // Tiingo cached data (read from in-memory cache + localStorage)
+  const ti = APIS.tiingo;
+  const tiMeta  = cached(`${ti.base}/tiingo/daily/${ticker}?token=${ti.key}`);
+  const tiQuote = cached(`${ti.base}/iex/${ticker}?token=${ti.key}`);
+  const tiPrice = cached(`${ti.base}/tiingo/daily/${ticker}/prices?startDate=1990-01-01&token=${ti.key}`);
+
   // Guard: need at least one source for header
-  const hasAny = fmpProfile || fhProfile || avOverview || tdQuote;
+  const hasAny = fmpProfile || fhProfile || avOverview || tdQuote || tiMeta;
   if (!hasAny) throw new Error('No cached data for "'+ticker+'". Load it with at least one API first.');
 
   currentTicker = ticker;
@@ -811,6 +880,16 @@ async function loadTickerCombo(ticker) {
     chgPct  = _pf(tdQuote.percent_change);
     chgAmt  = _pf(tdQuote.change);
     logoUrl = tdLogo?.url || null;
+  } else if (tiMeta?.ticker) {
+    const tiQ = Array.isArray(tiQuote) ? (tiQuote[0] || {}) : (tiQuote || {});
+    const _n  = v => (v != null && !isNaN(parseFloat(v))) ? parseFloat(v) : null;
+    const tiP = _n(tiQ.last) ?? _n(tiQ.tngoLast) ?? _n(tiQ.prevClose) ?? 0;
+    const tiPrev = _n(tiQ.prevClose) ?? 0;
+    name    = tiMeta.name || ticker;
+    sub     = ticker + ' | ' + (tiMeta.exchangeCode || '—');
+    price   = tiP;
+    chgAmt  = tiP && tiPrev ? tiP - tiPrev : null;
+    chgPct  = chgAmt != null && tiPrev ? (chgAmt / tiPrev) * 100 : null;
   }
 
   currentPrice = price;
@@ -931,24 +1010,48 @@ async function loadTickerCombo(ticker) {
 
   setDCF(fcfTTM ? fcfTTM/1e9 : 0, sharesB, ticker);
 
-  // ── PRICE CHART — longest series wins ──
+  // ── PRICE CHART — longest series wins; Tiingo wins when available (30yr+ history) ──
   const tdPts  = (() => { const vals = Array.isArray(tdPriceSeries?.values) ? tdPriceSeries.values : []; return vals.length; })();
   const fmpPts = (() => Array.isArray(fmpPrice) ? fmpPrice.length : 0)();
   const avTs   = avPriceRaw?.['Time Series (Daily)'] || {};
   const avPts  = Object.keys(avTs).length;
+  const tiPts  = (() => Array.isArray(tiPrice) ? tiPrice.length : 0)();
 
   let priceSrc = null;
-  if (tdPts > 0 || fmpPts > 0 || avPts > 0) {
+  if (tiPts > 0 || tdPts > 0 || fmpPts > 0 || avPts > 0) {
     const best = [
-      { src: 'twelvedata',    n: tdPts },
-      { src: 'fmp',           n: fmpPts },
-      { src: 'alphavantage',  n: avPts },
+      { src: 'tiingo',       n: tiPts  },  // highest priority — 30yr adjusted history
+      { src: 'alphavantage', n: avPts  },
+      { src: 'fmp',          n: fmpPts },
+      { src: 'twelvedata',   n: tdPts  },
     ].filter(x => x.n > 0).sort((a,b) => b.n - a.n)[0];
     priceSrc = best?.src;
   }
 
   elShow('priceLoading'); elHide('priceChart');
-  if (priceSrc === 'twelvedata') {
+
+  // Hide/show range bar — only meaningful for Tiingo's deep history
+  const priceBar = document.getElementById('priceRangeBar');
+  if (priceBar) priceBar.style.display = (priceSrc === 'tiingo') ? 'flex' : 'none';
+
+  if (priceSrc === 'tiingo') {
+    const sorted = [...tiPrice].filter(d => (d.adjClose ?? d.close) != null);
+    const labels = sorted.map(d => d.date.slice(0, 10));
+    const pts    = sorted.map(d => d.adjClose ?? d.close);
+    // Store in tiingoPriceCache so range buttons work even in combo mode
+    const rows   = sorted.map(d => ({
+      date: d.date.slice(0, 10),
+      high: d.adjHigh ?? d.high ?? null,
+      low:  d.adjLow  ?? d.low  ?? null,
+      close: d.adjClose ?? d.close,
+      volume: d.adjVolume ?? d.volume ?? null,
+    }));
+    tiingoPriceCache[`tiingo_${ticker}`] = { labels, pts, rows };
+    // Default range to 1Y in combo mode
+    document.querySelectorAll('.price-range-btn').forEach(b => b.classList.toggle('active', b.dataset.range === '1Y'));
+    const { labels: sl, pts: sp } = filterPriceRange(labels, pts, '1Y');
+    buildPriceLineChart(sl, sp);
+  } else if (priceSrc === 'twelvedata') {
     const vals = [...tdPriceSeries.values].reverse();
     buildPriceLineChart(vals.map(d => d.datetime), vals.map(d => parseFloat(d.close)));
   } else if (priceSrc === 'fmp') {
@@ -1007,8 +1110,8 @@ async function loadTickerCombo(ticker) {
     buildPELineChart(sorted.map(d => d.period), sorted.map(d => d.v).filter(v => v > 0 && v < 500), 'Finnhub · weekly');
     setChartSourceBadge('peChart', 'finnhub');
   } else if (fhQtrReports.length >= 4) {
-    lastRawData = lastRawData || { api: 'finnhub', xbrlReports: { annual: fhAnnualReports, quarterly: fhQtrReports } };
-    buildComputedPEChart(ticker);
+    // Pass XBRL quarterly data directly — don't rely on lastRawData which may be set to AV data
+    buildComputedPEChart(ticker, fhQtrReports);
     setChartSourceBadge('peChart', 'finnhub');
   } else if (avEarnings?.quarterlyEarnings?.length >= 4 && (avPts > 0 || fmpPts > 0)) {
     buildAVPEChart(avIncome, avEarnings);
@@ -1048,6 +1151,7 @@ async function loadTickerCombo(ticker) {
   if (fhProfile  || fhQuote)   sources.push('Finnhub');
   if (avOverview || avQuote)   sources.push('AV');
   if (tdQuote)                 sources.push('TD');
+  if (tiMeta)                  sources.push('Tiingo');
   const el = document.getElementById('cacheStatus');
   if (el) {
     const dot = '<span class="cache-dot fresh"></span>';
@@ -1197,18 +1301,27 @@ async function loadTickerAlphaVantage(ticker) {
     apiFetch(av('EARNINGS')),
   ]);
 
-  // Check for rate limit / error
+  // Check for rate limit / error on any response
   const isRateLimited = obj => obj && (obj['Note'] || obj['Information'] || obj['message']);
+  const rateLimitMsg  = obj => obj['Note'] || obj['Information'] || obj['message'] || '';
+
+  // Throw if overview is rate-limited or invalid (no point continuing)
   if (isRateLimited(overview)) {
-    const msg = overview['Note'] || overview['Information'] || overview['message'] || '';
-    throw new Error('Alpha Vantage rate limit hit (25 req/day free tier). ' + msg);
+    throw new Error('Alpha Vantage rate limit hit (25 req/day free tier). ' + rateLimitMsg(overview));
   }
   if (!overview || !overview.Symbol) throw new Error(`Ticker "${ticker}" not found on Alpha Vantage`);
+
+  // Null-out any rate-limited sub-responses so chart builders get null instead of error envelopes
+  const cleanAV = obj => (obj && isRateLimited(obj)) ? null : obj;
+  const safeIncomeRaw   = cleanAV(incomeRaw);
+  const safeCashFlowRaw = cleanAV(cashFlowRaw);
+  const safeEarningsRaw = cleanAV(earningsRaw);
+  const safeQuoteRaw    = cleanAV(quoteRaw);
 
   currentTicker = ticker;
 
   // ── Quote ──
-  const q = quoteRaw?.['Global Quote'] || {};
+  const q = safeQuoteRaw?.['Global Quote'] || {};
   const _pf = v => { if (v == null || v === '' || v === 'None') return null; const n = parseFloat(String(v).replace('%','')); return isNaN(n) ? null : n; };
 
   currentPrice = _pf(q['05. price']) ?? _pf(overview.Price) ?? 0;
@@ -1245,7 +1358,7 @@ async function loadTickerAlphaVantage(ticker) {
   const sharesB    = safe(ov.SharesOutstanding) ? safe(ov.SharesOutstanding) / 1e9 : 0;
 
   // ── Derive FCF TTM from the 4 most recent quarterly cash flow reports ──
-  const cfQ = (cashFlowRaw?.quarterlyReports || []).slice(0, 4);
+  const cfQ = (safeCashFlowRaw?.quarterlyReports || []).slice(0, 4);
   let fcfTTM = null, cash = null;
   if (cfQ.length === 4) {
     const opCFs  = cfQ.map(r => safe(r.operatingCashflow));
@@ -1274,15 +1387,15 @@ async function loadTickerAlphaVantage(ticker) {
   setDCF(fcfTTM ? fcfTTM/1e9 : 0, sharesB, ticker);
 
   // ── Financial Charts (from annual reports) ──
-  buildAlphaVantageCharts(incomeRaw, cashFlowRaw, earningsRaw, 'Annually');
-  lastRawData = { api: 'alphavantage', incomeRaw, cashFlowRaw, earningsRaw };
-  buildAVPEChart(incomeRaw, earningsRaw); // compute P/E from AV data
+  buildAlphaVantageCharts(safeIncomeRaw, safeCashFlowRaw, safeEarningsRaw, 'Annually');
+  lastRawData = { api: 'alphavantage', incomeRaw: safeIncomeRaw, cashFlowRaw: safeCashFlowRaw, earningsRaw: safeEarningsRaw };
+  buildAVPEChart(safeIncomeRaw, safeEarningsRaw); // compute P/E from AV data
 
   // ── Price Chart from TIME_SERIES_DAILY (free, last 100 days) ──
   await buildPriceChartAV(ticker);
 
   // ── Earnings Calendar from EARNINGS (quarterly actuals + estimates) ──
-  buildEarningsAV(earningsRaw, ticker);
+  buildEarningsAV(safeEarningsRaw, ticker);
 
   // ── Profile ──
   buildProfileAV(ov, ticker);
@@ -1333,7 +1446,12 @@ function buildAlphaVantageCharts(incomeRaw, cashFlowRaw, earningsRaw, period = '
   const incomeQ   = (incomeRaw?.quarterlyReports   || []).slice(0, 20).reverse();
   const cashFlowQ = (cashFlowRaw?.quarterlyReports  || []).slice(0, 20).reverse();
   const epsQ      = (earningsRaw?.quarterlyEarnings || []).slice(0, 20).reverse();
-  if (!incomeQ.length) { buildChartsUnavailable('No financial data returned — check your Alpha Vantage API key'); return; }
+  if (!incomeQ.length) {
+    buildChartsUnavailable(incomeRaw === null
+      ? 'Alpha Vantage rate limit hit — financial charts unavailable. Try again tomorrow or switch to Finnhub.'
+      : 'No financial data returned — check your Alpha Vantage API key');
+    return;
+  }
 
   // Row-level accessors using shared helpers
   const avFcfVal    = r => computeFCF(safe(r.operatingCashflow), safe(r.capitalExpenditures));
@@ -1344,7 +1462,11 @@ function buildAlphaVantageCharts(incomeRaw, cashFlowRaw, earningsRaw, period = '
     const ni     = toAnnualGroups(incomeQ,   r => r.netIncome);
     const ebitda = toAnnualGroups(incomeQ,   avEbitdaVal);
     const fcf    = toAnnualGroups(cashFlowQ, avFcfVal);
-    const epsA   = (earningsRaw?.annualEarnings || []).slice(0, 5).reverse();
+    // Filter to only completed fiscal years: reportedEPS must exist and fiscalDateEnding must be in the past
+    const today = new Date().toISOString().slice(0,10);
+    const epsA   = (earningsRaw?.annualEarnings || [])
+      .filter(r => r.reportedEPS && r.reportedEPS !== 'None' && (r.fiscalDateEnding || '') <= today)
+      .slice(0, 5).reverse();
     buildFinancialChart('revenueChart',   'revenueChartWrap',   rev.map(d=>d.yr),    rev.map(d=>d.val),    'Revenue',        '#3b82f6');
     buildFinancialChart('fcfChart',       'fcfChartWrap',       fcf.map(d=>d.yr),    fcf.map(d=>d.val),    'Free Cash Flow', '#10b981');
     buildFinancialChart('netIncomeChart', 'netIncomeChartWrap', ni.map(d=>d.yr),     ni.map(d=>d.val),     'Net Income',     '#22c55e');
@@ -1509,7 +1631,20 @@ function buildFinnhubChartsFromData(xbrlReports, period = 'Annually') {
   const fhEBITDA = m => computeEBITDA(m.netIncome, m.tax, m.interest, m.dep);
 
   if (period === 'Annually') {
-    const metrics = extractMetrics(xbrlReports.annual);
+    // Deduplicate annual reports by year label — keep the latest filing per year
+    const dedupedAnnual = Object.values(
+      xbrlReports.annual.reduce((acc, r) => {
+        const yr = r.year ? String(r.year) : (r.period || '').slice(0, 4);
+        // Later entries in the array (newer filings) overwrite earlier ones
+        if (yr) acc[yr] = r;
+        return acc;
+      }, {})
+    ).sort((a, b) => {
+      const ya = a.year ? String(a.year) : (a.period||'').slice(0,4);
+      const yb = b.year ? String(b.year) : (b.period||'').slice(0,4);
+      return ya.localeCompare(yb);
+    });
+    const metrics = extractMetrics(dedupedAnnual);
     const labels  = metrics.map(m => m.label);
     buildFinancialChart('revenueChart',   'revenueChartWrap',   labels, metrics.map(m => m.revenue),   'Revenue',        '#3b82f6');
     buildFinancialChart('fcfChart',       'fcfChartWrap',       labels, metrics.map(fhFCF),            'Free Cash Flow', '#10b981');
@@ -1634,6 +1769,252 @@ async function buildPriceChartTD(ticker) {
 
 function buildEarningsUnavailableTD() {
   buildEarningsTable([], 'EPS Est.', 'Rev. Est.', '🔒 Earnings calendar requires a Twelve Data paid plan');
+}
+
+// ══════════════════════════════════════════
+// TIINGO LOADER
+// Free tier endpoints:
+//   /tiingo/daily/{ticker}          → name, description, exchangeCode, startDate, endDate
+//   /iex/{ticker}                   → real-time: last, prevClose, open, high, low, volume,
+//                                     mid, askPrice, bidPrice, lastSaleTimestamp
+//   /tiingo/daily/{ticker}/prices   → 30yr adjusted EOD OHLCV
+// Not on free tier: fundamentals, earnings, news
+// Rate limits: 500 req/day, 50 unique tickers/hour on EOD endpoint
+// ══════════════════════════════════════════
+let tiingoPriceCache = {}; // in-memory full-history cache for instant range switching
+
+async function loadTickerTiingo(ticker) {
+  const { key, base } = APIS.tiingo;
+
+  // Parallel fetch: meta always works; IEX may return empty for non-US or after hours
+  const [meta, quoteArr] = await Promise.all([
+    apiFetch(`${base}/tiingo/daily/${ticker}?token=${key}`),
+    apiFetch(`${base}/iex/${ticker}?token=${key}`).catch(() => []),
+  ]);
+
+  if (!meta || meta.detail) throw new Error(meta?.detail || `Ticker "${ticker}" not found on Tiingo`);
+
+  currentTicker = ticker;
+  tiingoPriceCache = {}; // clear on new ticker
+
+  // IEX response: array of objects, one per ticker
+  // Fields: ticker, last, lastSaleTimestamp, lastSize, tngoLast, prevClose,
+  //         open, high, low, mid, volume, bidSize, bidPrice, askSize, askPrice, quoteTimestamp
+  const q  = Array.isArray(quoteArr) ? (quoteArr[0] || {}) : (quoteArr || {});
+  const _n = v => (v != null && v !== '' && !isNaN(parseFloat(v))) ? parseFloat(v) : null;
+
+  // Price priority: IEX last trade → tngoLast (delayed) → prevClose
+  const price  = _n(q.last) ?? _n(q.tngoLast) ?? _n(q.prevClose) ?? 0;
+  const prevCl = _n(q.prevClose) ?? 0;
+  const chgAmt = price && prevCl ? price - prevCl : null;
+  const chgPct = chgAmt != null && prevCl ? (chgAmt / prevCl) * 100 : null;
+  currentPrice = price;
+
+  // ── Header ──
+  setHeader(meta.name || ticker, `${ticker} | ${meta.exchangeCode || '—'}`, price, chgPct, chgAmt, null);
+
+  // ── Metrics — free tier has no fundamentals; all null ──
+  setMetrics({
+    mktCap: null, pe: null, ps: null, evEbitda: null, pb: null,
+    fcfTTM: null, fcfYield: null, fcfPerSh: null, sbc: null,
+    margin: null, opMargin: null, revTTM: null, eps: null, roe: null,
+    cash: null, debt: null, de: null,
+    divAmt: null, divYield: null, payout: null,
+  });
+
+  setDCF(0, 0, ticker);
+
+  // ── Financial charts — need paid tier ──
+  buildChartsUnavailable('Financial statements require Tiingo paid tier — load via FMP or Alpha Vantage for financials');
+  buildPELineChart([], [], null);
+  buildEarningsTable([], 'EPS Est.', 'Rev. Est.', '🔒 Earnings data not available on Tiingo free tier');
+
+  // ── Profile — built from meta + IEX quote fields ──
+  buildProfileTiingo(meta, q, ticker);
+
+  // ── Price chart — 30yr history, sliced to 1Y by default ──
+  document.querySelectorAll('.price-range-btn').forEach(b => b.classList.toggle('active', b.dataset.range === '1Y'));
+  await buildPriceChartTiingo(ticker, '1Y');
+}
+
+// Build a rich profile card from /tiingo/daily meta + IEX quote
+// meta fields: name, description, exchangeCode, startDate, endDate, ticker
+// IEX  fields: last, prevClose, open, high, low, mid, volume, bidPrice, askPrice, lastSaleTimestamp
+function buildProfileTiingo(meta, q, ticker) {
+  const body = document.getElementById('aiBody');
+  const _n   = v => (v != null && !isNaN(parseFloat(v))) ? parseFloat(v) : null;
+  const _d   = s => s ? s.slice(0,10) : null;
+
+  const vol     = _n(q.volume);
+  const open    = _n(q.open);
+  const high    = _n(q.high);
+  const low     = _n(q.low);
+  const mid     = _n(q.mid);
+  const bid     = _n(q.bidPrice);
+  const ask     = _n(q.askPrice);
+  const prevCl  = _n(q.prevClose);
+  const lastTs  = q.lastSaleTimestamp ? new Date(q.lastSaleTimestamp).toLocaleTimeString('en-US',{hour:'2-digit',minute:'2-digit'}) : null;
+
+  // Data depth from meta.startDate
+  const startDate = _d(meta.startDate);
+  const dataYears = startDate ? Math.floor((Date.now() - new Date(startDate)) / (365.25*24*3600*1000)) : null;
+
+  const statRows = [
+    open    != null ? ['Open',        `$${open.toFixed(2)}`]    : null,
+    high    != null ? ['Day High',    `$${high.toFixed(2)}`]    : null,
+    low     != null ? ['Day Low',     `$${low.toFixed(2)}`]     : null,
+    prevCl  != null ? ['Prev Close',  `$${prevCl.toFixed(2)}`]  : null,
+    mid     != null ? ['Mid',         `$${mid.toFixed(2)}`]     : null,
+    bid     != null ? ['Bid',         `$${bid.toFixed(2)}`]     : null,
+    ask     != null ? ['Ask',         `$${ask.toFixed(2)}`]     : null,
+    vol     != null ? ['Volume',      fmt(vol)]                  : null,
+    lastTs           ? ['Last Trade',  lastTs]                   : null,
+    meta.exchangeCode ? ['Exchange',  meta.exchangeCode]         : null,
+    dataYears         ? ['Price History', `${dataYears}+ years`] : null,
+  ].filter(Boolean);
+
+  const statsHtml = statRows.map(([lbl, val]) =>
+    `<div style="display:flex;justify-content:space-between;align-items:center;padding:5px 0;border-bottom:1px solid var(--bdim)">
+      <span style="font-size:12px;color:var(--muted)">${lbl}</span>
+      <span style="font-size:12px;font-weight:500;color:var(--text)">${val}</span>
+    </div>`
+  ).join('');
+
+  const desc = meta.description || '';
+
+  body.innerHTML = `
+    <div style="padding:2px 0">
+      <div style="display:flex;flex-wrap:wrap;gap:5px;margin-bottom:12px">
+        <span style="background:rgba(14,165,233,0.1);color:#0ea5e9;border:1px solid rgba(14,165,233,0.25);border-radius:4px;padding:2px 8px;font-size:11px">${meta.exchangeCode || '—'}</span>
+        <span style="background:var(--bg3);border:1px solid var(--border);border-radius:4px;padding:2px 8px;font-size:11px;color:var(--muted)">Tiingo IEX · Real-time</span>
+        ${dataYears ? `<span style="background:var(--bg3);border:1px solid var(--border);border-radius:4px;padding:2px 8px;font-size:11px;color:var(--muted)">${dataYears}yr price history</span>` : ''}
+      </div>
+      ${desc ? `<div style="font-size:13px;color:var(--muted);line-height:1.8;margin-bottom:14px">${desc}</div>` : ''}
+      ${statsHtml ? `<div style="margin-top:4px">${statsHtml}</div>` : ''}
+      ${!desc && !statsHtml ? '<em style="color:var(--muted2)">No additional data available for this ticker</em>' : ''}
+    </div>`;
+}
+
+async function buildPriceChartTiingo(ticker, range) {
+  const { key, base } = APIS.tiingo;
+  elShow('priceLoading'); elHide('priceChart');
+
+  const bar = document.getElementById('priceRangeBar');
+  if (bar) bar.style.display = 'flex';
+
+  const cacheK = `tiingo_${ticker}`;
+  let allLabels, allPts, allRows;
+
+  if (tiingoPriceCache[cacheK]) {
+    ({ labels: allLabels, pts: allPts, rows: allRows } = tiingoPriceCache[cacheK]);
+  } else {
+    allLabels = []; allPts = []; allRows = [];
+    try {
+      // Full adjusted OHLCV history from 1990 — Tiingo free tier supports 30yr+
+      // Fields returned: date, open, high, low, close, volume, adjClose, adjHigh, adjLow,
+      //                  adjOpen, adjVolume, divCash, splitFactor
+      const data = await apiFetch(`${base}/tiingo/daily/${ticker}/prices?startDate=1990-01-01&token=${key}`);
+      if (Array.isArray(data) && data.length) {
+        for (const d of data) {
+          const price = d.adjClose ?? d.close ?? null;
+          if (price == null) continue;
+          allLabels.push(d.date.slice(0, 10));
+          allPts.push(price);
+          allRows.push({
+            date:   d.date.slice(0, 10),
+            open:   d.adjOpen   ?? d.open   ?? null,
+            high:   d.adjHigh   ?? d.high   ?? null,
+            low:    d.adjLow    ?? d.low    ?? null,
+            close:  price,
+            volume: d.adjVolume ?? d.volume ?? null,
+          });
+        }
+      }
+    } catch(e) {
+      console.warn('Tiingo price history:', e.message);
+    }
+    tiingoPriceCache[cacheK] = { labels: allLabels, pts: allPts, rows: allRows };
+
+    // After full history loads, compute 52W high/low and inject into profile card
+    if (allRows.length >= 2) {
+      injectTiingo52W(allRows);
+    }
+  }
+
+  const { labels, pts } = filterPriceRange(allLabels, allPts, range);
+  buildPriceLineChart(labels, pts);
+  setChartSourceBadge('priceChart', 'tiingo');
+}
+
+// Compute 52-week high/low from OHLCV history and inject into profile card
+function injectTiingo52W(rows) {
+  const cutoff = new Date();
+  cutoff.setFullYear(cutoff.getFullYear() - 1);
+  const cutStr = cutoff.toISOString().slice(0, 10);
+  const yr = rows.filter(r => r.date >= cutStr);
+  if (!yr.length) return;
+  const high52 = Math.max(...yr.map(r => r.high ?? r.close));
+  const low52  = Math.min(...yr.map(r => r.low  ?? r.close));
+  // avg volume over 50 days
+  const last50 = rows.slice(-50);
+  const avgVol = last50.length ? last50.reduce((s, r) => s + (r.volume || 0), 0) / last50.length : null;
+
+  // Try to append these to the existing profile stats div
+  const body = document.getElementById('aiBody');
+  if (!body) return;
+  const statsDiv = body.querySelector('div[style*="margin-top:4px"]');
+  const inject = [
+    high52 != null ? ['52W High', `$${high52.toFixed(2)}`] : null,
+    low52  != null ? ['52W Low',  `$${low52.toFixed(2)}`]  : null,
+    avgVol != null ? ['Avg Vol (50d)', fmt(Math.round(avgVol))] : null,
+  ].filter(Boolean);
+  if (!inject.length) return;
+  const rows52Html = inject.map(([lbl, val]) =>
+    `<div style="display:flex;justify-content:space-between;align-items:center;padding:5px 0;border-bottom:1px solid var(--bdim)">
+      <span style="font-size:12px;color:var(--muted)">${lbl}</span>
+      <span style="font-size:12px;font-weight:500;color:var(--text)">${val}</span>
+    </div>`
+  ).join('');
+  if (statsDiv) {
+    statsDiv.insertAdjacentHTML('afterbegin', rows52Html);
+  } else if (body.querySelector('em')) {
+    // Replace the "no data" message with a stats grid
+    body.innerHTML = `<div style="margin-top:4px">${rows52Html}</div>`;
+  }
+}
+
+// Slice a full label/pts pair to the requested time range
+function filterPriceRange(allLabels, allPts, range) {
+  if (!allLabels || !allLabels.length) return { labels: [], pts: [] };
+  if (range === 'MAX') return { labels: allLabels, pts: allPts };
+  const yearsMap = { '1Y': 1, '5Y': 5, '10Y': 10, '20Y': 20 };
+  const yrs = yearsMap[range] ?? 1;
+  const now = new Date();
+  const cutoff = new Date(now.getFullYear() - yrs, now.getMonth(), now.getDate())
+    .toISOString().slice(0, 10);
+  const idx = allLabels.findIndex(d => d >= cutoff);
+  if (idx === -1) return { labels: allLabels, pts: allPts };
+  return { labels: allLabels.slice(idx), pts: allPts.slice(idx) };
+}
+
+// Called when a range pill is clicked
+function priceRangeClick(btn) {
+  document.querySelectorAll('.price-range-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  const range = btn.dataset.range;
+
+  // Use Tiingo in-memory cache when: (a) Tiingo is the active API, or
+  // (b) combo mode loaded Tiingo as the price source (cache will be populated)
+  const hasTiingoCache = currentTicker && tiingoPriceCache[`tiingo_${currentTicker}`] != null;
+  if ((activeApi === 'tiingo' || (activeApi === 'combo' && hasTiingoCache)) && currentTicker) {
+    buildPriceChartTiingo(currentTicker, range);
+  } else if (priceChartInst) {
+    // Other APIs: slice whatever data is already rendered in the chart
+    const allLabels = [...priceChartInst.data.labels];
+    const allPts    = [...priceChartInst.data.datasets[0].data];
+    const { labels, pts } = filterPriceRange(allLabels, allPts, range);
+    buildPriceLineChart(labels, pts);
+  }
 }
 
 function buildProfileTD(q, ticker) {
@@ -1818,6 +2199,10 @@ function buildPriceCardFinnhub(quote) {
   canvas.style.display = 'none';
   wrap.querySelectorAll('.section-loading, .quote-card').forEach(el => el.remove());
 
+  // Hide range bar (no chart to range)
+  const bar = document.getElementById('priceRangeBar');
+  if (bar) bar.style.display = 'none';
+
   // Disable click-to-expand since there's no chart to expand
   const card = document.getElementById('priceCard');
   if (card) { card.onclick = null; card.style.cursor = 'default'; }
@@ -1896,6 +2281,14 @@ function buildPriceLineChart(labels, pts) {
   wrap.querySelectorAll('.chart-locked, .quote-card').forEach(el => el.remove());
   elHide('priceLoading');
 
+  // Show range bar when Tiingo is the active API, or when combo mode used Tiingo as price source
+  const bar = document.getElementById('priceRangeBar');
+  if (bar) {
+    const hasTiingoHistory = tiingoPriceCache[`tiingo_${currentTicker}`] != null;
+    const showBar = activeApi === 'tiingo' || (activeApi === 'combo' && hasTiingoHistory);
+    bar.style.display = showBar ? 'flex' : 'none';
+  }
+
   // Re-enable expand (may have been disabled by Finnhub OHLC card)
   const card = document.getElementById('priceCard');
   if (card) { card.onclick = () => openChartModal('Price','priceChart'); card.style.cursor = 'pointer'; }
@@ -1912,8 +2305,19 @@ function buildPriceLineChart(labels, pts) {
   }
 
   canvas.style.display = '';
-  const up = pts[pts.length-1] >= pts[0];
+  const firstPt = pts[0];
+  const lastPt  = pts[pts.length - 1];
+  const up = lastPt >= firstPt;
   const color = up ? '#1a7f37' : '#cf222e';
+
+  // Update trend badge to reflect the visible range's return (not just daily change)
+  const ptb = document.getElementById('priceTrendBadge');
+  if (ptb && firstPt && firstPt !== 0) {
+    const rangePct = ((lastPt - firstPt) / firstPt) * 100;
+    ptb.textContent = (up ? '↑' : '↓') + Math.abs(rangePct).toFixed(2) + '%';
+    ptb.className = 'trend-badge ' + (up ? 'up' : 'dn');
+  }
+
   priceChartInst = new Chart(canvas, {
     type: 'line',
     data: { labels, datasets: [{ data: pts, borderColor: color, backgroundColor: up?'rgba(26,127,55,0.08)':'rgba(207,34,46,0.08)', fill: true, tension: 0.35, pointRadius: 0, pointHoverRadius: 4, pointHoverBackgroundColor: color, borderWidth: 1.5 }] },
@@ -2174,10 +2578,10 @@ async function buildFinnhubPEChart(ticker) {
 }
 
 // Compute P/E from quarterly EPS (XBRL) × price history (FMP EOD)
-async function buildComputedPEChart(ticker) {
+async function buildComputedPEChart(ticker, xbrlQuarterlyOverride) {
   try {
-    // Use XBRL quarterly data already in lastRawData
-    const xbrl = lastRawData?.xbrlReports?.quarterly || [];
+    // Accept XBRL data directly (combo mode) or fall back to lastRawData (Finnhub standalone)
+    const xbrl = xbrlQuarterlyOverride || lastRawData?.xbrlReports?.quarterly || [];
     if (xbrl.length < 4) {
       buildPELineChart([], [], null);
       return;
@@ -2464,14 +2868,24 @@ const MODAL_CHART_META = {
   ebitdaChart:    { label: 'EBITDA',         color: '#8b5cf6', isLine: false, key: 'ebitda'  },
 };
 
+let modalActiveRange = '1Y'; // tracks the active range inside the modal
+
 function openChartModal(title, sourceCanvasId) {
   const overlay = document.getElementById('chartModalOverlay');
   modalActiveCanvasId = sourceCanvasId;
   document.getElementById('chartModalTitle').textContent = title + ' — ' + currentTicker;
 
   const isFinancial = FINANCIAL_CHART_IDS.has(sourceCanvasId);
+  const isPrice     = sourceCanvasId === 'priceChart';
+  const hasTiingo   = isPrice && currentTicker && tiingoPriceCache[`tiingo_${currentTicker}`] != null;
+
+  // Financial period toolbar
   const toolbar = document.getElementById('chartModalToolbar');
   toolbar.style.display = isFinancial ? 'flex' : 'none';
+
+  // Price range bar — shown only for Price chart when Tiingo history is available
+  const rangeBar = document.getElementById('chartModalRangeBar');
+  rangeBar.style.display = hasTiingo ? 'flex' : 'none';
 
   // Sync modal period buttons to whatever period the main page is on
   if (isFinancial) {
@@ -2482,8 +2896,31 @@ function openChartModal(title, sourceCanvasId) {
     });
   }
 
+  // Sync modal range buttons to whatever range the main page price chart is on
+  if (hasTiingo) {
+    const activeRangeBtn = document.querySelector('.price-range-btn.active');
+    modalActiveRange = activeRangeBtn ? activeRangeBtn.dataset.range : '1Y';
+    document.querySelectorAll('.modal-range-btn').forEach(b => {
+      b.classList.toggle('active', b.dataset.range === modalActiveRange);
+    });
+  }
+
   renderModalChart(sourceCanvasId);
   overlay.classList.add('open');
+}
+
+function modalRangeClick(btn) {
+  document.querySelectorAll('.modal-range-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  modalActiveRange = btn.dataset.range;
+
+  // Also sync the main-page range bar
+  document.querySelectorAll('.price-range-btn').forEach(b => {
+    b.classList.toggle('active', b.dataset.range === modalActiveRange);
+  });
+
+  // Re-render the modal chart with new range
+  if (modalActiveCanvasId) renderModalChart(modalActiveCanvasId);
 }
 
 function renderModalChart(sourceCanvasId) {
@@ -2529,7 +2966,14 @@ function renderModalChart(sourceCanvasId) {
       };
 
       if (modalActivePeriod === 'Annually') {
-        const metrics = extractM(xbrl.annual);
+        const dedupedAnnualModal = Object.values(
+          xbrl.annual.reduce((acc, r) => {
+            const yr = r.year ? String(r.year) : (r.period || '').slice(0, 4);
+            if (yr) acc[yr] = r;
+            return acc;
+          }, {})
+        ).sort((a,b)=>{ const ya=a.year?String(a.year):(a.period||'').slice(0,4); const yb=b.year?String(b.year):(b.period||'').slice(0,4); return ya.localeCompare(yb); });
+        const metrics = extractM(dedupedAnnualModal);
         labels = metrics.map(m => m.label);
         values = metrics.map(getValue);
       } else if (modalActivePeriod === 'Quarterly') {
@@ -2674,6 +3118,36 @@ function renderModalChart(sourceCanvasId) {
     return;
   }
 
+  // Price chart with Tiingo: render from in-memory cache using the active modal range
+  if (sourceCanvasId === 'priceChart' && currentTicker && tiingoPriceCache[`tiingo_${currentTicker}`]) {
+    const cache = tiingoPriceCache[`tiingo_${currentTicker}`];
+    const { labels, pts } = filterPriceRange(cache.labels, cache.pts, modalActiveRange);
+    if (labels.length) {
+      const firstPt = pts[0], lastPt = pts[pts.length - 1];
+      const up    = lastPt >= firstPt;
+      const color = up ? '#1a7f37' : '#cf222e';
+      const rangePct = firstPt ? (((lastPt - firstPt) / firstPt) * 100).toFixed(2) : null;
+      modalChartInst = new Chart(modalCanvas, {
+        type: 'line',
+        data: { labels, datasets: [{ data: pts, borderColor: color, backgroundColor: up ? 'rgba(26,127,55,0.08)' : 'rgba(207,34,46,0.08)', fill: true, tension: 0.35, pointRadius: 0, pointHoverRadius: 4, pointHoverBackgroundColor: color, borderWidth: 1.5 }] },
+        options: {
+          responsive: true, maintainAspectRatio: false, animation: { duration: 250 },
+          interaction: { mode: 'index', intersect: false },
+          plugins: {
+            legend: { display: false },
+            tooltip: { backgroundColor: '#fff', borderColor: '#e1e4e8', borderWidth: 1, titleColor: '#111827', bodyColor: '#6b7280', padding: 10, displayColors: false, callbacks: { label: ctx => '$' + ctx.parsed.y.toFixed(2) } },
+            ...(rangePct != null ? { title: { display: true, text: `${up ? '+' : ''}${rangePct}%  ·  $${firstPt.toFixed(2)} → $${lastPt.toFixed(2)}`, color: up ? '#1a7f37' : '#cf222e', font: { size: 13, weight: '600', family: 'Inter' }, padding: { bottom: 12 } } } : {})
+          },
+          scales: {
+            x: { display: true, grid: { color: 'rgba(0,0,0,0.06)' }, ticks: { font: { size: 11, family: 'Inter' }, color: '#6b7280', maxTicksLimit: 10, callback: (v, i) => labels[i] ? labels[i].slice(0, 7) : '' } },
+            y: { display: true, grid: { color: 'rgba(0,0,0,0.06)' }, ticks: { font: { size: 11, family: 'Inter' }, color: '#6b7280', callback: v => '$' + v.toFixed(0) } }
+          }
+        }
+      });
+      return;
+    }
+  }
+
   // Non-financial charts (Price, P/E): clone from the source canvas as before
   const sourceCanvas = document.getElementById(sourceCanvasId);
   const sourceChart = Chart.getChart(sourceCanvas);
@@ -2751,6 +3225,13 @@ document.addEventListener('keydown', e => { if (e.key === 'Escape') closeChartMo
       <button class="modal-period-btn" onclick="modalPeriodClick(this,'Quarterly')">Quarterly</button>
       <button class="modal-period-btn" onclick="modalPeriodClick(this,'Quarterly (TTM)')">Quarterly (TTM)</button>
       <button class="modal-period-btn active" onclick="modalPeriodClick(this,'Annually')">Annually</button>
+    </div>
+    <div id="chartModalRangeBar" style="display:none;background:var(--bg3);border-radius:6px;padding:3px;gap:3px;align-items:center;width:fit-content;margin-bottom:18px">
+      <button class="modal-range-btn active" data-range="1Y"  onclick="modalRangeClick(this)">1Y</button>
+      <button class="modal-range-btn"        data-range="5Y"  onclick="modalRangeClick(this)">5Y</button>
+      <button class="modal-range-btn"        data-range="10Y" onclick="modalRangeClick(this)">10Y</button>
+      <button class="modal-range-btn"        data-range="20Y" onclick="modalRangeClick(this)">20Y</button>
+      <button class="modal-range-btn"        data-range="MAX" onclick="modalRangeClick(this)">MAX</button>
     </div>
     <div class="chart-modal-body">
       <canvas id="chartModalCanvas" style="width:100%;height:100%"></canvas>
